@@ -1,26 +1,33 @@
 // App.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Login from './Login';
 import AdminPanel from './AdminPanel';
+import { ToastProvider } from './components/ui/Toast';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    localStorage.getItem('admin_logged_in') === 'true'
+  );
 
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      setIsAuthenticated(true);
-    }
-  }, []);
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_logged_in');
+    setIsLoggedIn(false);
+  };
 
   return (
-    <div className="app">
-      {isAuthenticated ? (
-        <AdminPanel setIsAuthenticated={setIsAuthenticated} />
-      ) : (
-        <Login setIsAuthenticated={setIsAuthenticated} />
-      )}
-    </div>
+    <ToastProvider>
+      <div className="app min-h-screen bg-gray-50">
+        {isLoggedIn ? (
+          <AdminPanel onLogout={handleLogout} />
+        ) : (
+          <Login onLogin={handleLogin} />
+        )}
+      </div>
+    </ToastProvider>
   );
 }
 

@@ -54,16 +54,12 @@
       [
         "@rnmapbox/maps",
         {
-          "RNMapboxMapsDownloadToken": "sk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWpiMmpoNW0wYzN4M2NzZGd1OG12eGo5In0.T31xmXimOkszavrIwakwgg"
+          "RNMapboxMapsDownloadToken": "sk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWpiMmpoNW0wYzN4M2NzZGd1OG12eGo5In0.T31xmXimOkszavrIwakwgg",
+          "RNMapboxMapsVersion": "11.16.2"
         }
       ],
       [
-        "@viro-community/react-viro",
-        {
-          "androidXrMode": [
-            "AR"
-          ]
-        }
+        "expo-camera"
       ],
       [
         "expo-location",
