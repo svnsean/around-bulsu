@@ -1,29 +1,24 @@
-// AdminPanel.js - Modern Tailwind UI
+// AdminPanel.js - Modern Tailwind UI with Supabase
 import React, { useState } from 'react';
+import { Map, Building2, AlertTriangle, Info, LogOut, MapPin, ChevronRight } from 'lucide-react';
 import MapEditor from './MapEditor';
 import BuildingManager from './BuildingManager';
 import EmergencyManager from './EmergencyManager';
-import ContactsManager from './ContactsManager';
-import AnnouncementsManager from './AnnouncementsManager';
-import { 
-  Map, Building2, AlertTriangle, Phone, Megaphone, LogOut, MapPin,
-  ChevronRight
-} from 'lucide-react';
-import { cn } from './lib/utils';
+import InfoManager from './InfoManager';
 import { Button } from './components/ui/Button';
-import './AdminPanel.css';
+import { cn } from './lib/utils';
 
 const navItems = [
-  { id: 'map', label: 'Map Editor', icon: Map, description: 'Manage navigation nodes' },
-  { id: 'buildings', label: 'Buildings', icon: Building2, description: 'Building information' },
-  { id: 'emergency', label: 'Emergency', icon: AlertTriangle, description: 'Zones & blockages' },
-  { id: 'contacts', label: 'Contacts', icon: Phone, description: 'Emergency contacts' },
-  { id: 'announcements', label: 'Announcements', icon: Megaphone, description: 'Campus updates' },
+  { id: 'map', label: 'Map Editor', description: 'Manage campus map', icon: Map },
+  { id: 'buildings', label: 'Buildings', description: 'Building info & rooms', icon: Building2 },
+  { id: 'emergency', label: 'Emergency', description: 'Zones & blockages', icon: AlertTriangle },
+  { id: 'info', label: 'Info', description: 'Contacts & announcements', icon: Info },
 ];
 
 const AdminPanel = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('map');
   const [editBuildingId, setEditBuildingId] = useState(null);
+  const [mapEditorMode, setMapEditorMode] = useState(null);
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -36,15 +31,10 @@ const AdminPanel = ({ onLogout }) => {
     setActiveTab('buildings');
   };
 
-  // Handle switching to Map Editor (for adding buildings)
-  const [mapEditorMode, setMapEditorMode] = useState(null);
-  
   const handleSwitchToMapEditor = () => {
     setMapEditorMode('add_building');
     setActiveTab('map');
   };
-
-  const activeItem = navItems.find(item => item.id === activeTab);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -121,25 +111,12 @@ const AdminPanel = ({ onLogout }) => {
 
       {/* Main content */}
       <main className="flex-1 overflow-hidden flex flex-col">
-        {/* Top header */}
-        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-900">{activeItem?.label}</h2>
-            <p className="text-sm text-gray-500">{activeItem?.description}</p>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            System Online
-          </div>
-        </header>
-        
-        {/* Content area */}
+        {/* Content area - removed duplicate header */}
         <div className="flex-1 overflow-auto">
           {activeTab === 'map' && <MapEditor onEditBuilding={handleEditBuilding} initialMode={mapEditorMode} onModeApplied={() => setMapEditorMode(null)} />}
           {activeTab === 'buildings' && <BuildingManager editBuildingId={editBuildingId} onBuildingEdited={() => setEditBuildingId(null)} onSwitchToMapEditor={handleSwitchToMapEditor} />}
           {activeTab === 'emergency' && <EmergencyManager />}
-          {activeTab === 'contacts' && <ContactsManager />}
-          {activeTab === 'announcements' && <AnnouncementsManager />}
+          {activeTab === 'info' && <InfoManager />}
         </div>
       </main>
     </div>

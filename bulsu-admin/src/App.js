@@ -1,32 +1,42 @@
 // App.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import Login from './Login';
 import AdminPanel from './AdminPanel';
 import { ToastProvider } from './components/ui/Toast';
+import './App.css';
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    localStorage.getItem('admin_logged_in') === 'true'
-  );
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const loggedIn = localStorage.getItem('adminLoggedIn');
+    if (loggedIn === 'true') {
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   const handleLogin = () => {
+    localStorage.setItem('adminLoggedIn', 'true');
     setIsLoggedIn(true);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_logged_in');
+    localStorage.removeItem('adminLoggedIn');
     setIsLoggedIn(false);
   };
 
+  if (!isLoggedIn) {
+    return (
+      <ToastProvider>
+        <Login onLogin={handleLogin} />
+      </ToastProvider>
+    );
+  }
+
   return (
     <ToastProvider>
-      <div className="app min-h-screen bg-gray-50">
-        {isLoggedIn ? (
-          <AdminPanel onLogout={handleLogout} />
-        ) : (
-          <Login onLogin={handleLogin} />
-        )}
-      </div>
+      <AdminPanel onLogout={handleLogout} />
     </ToastProvider>
   );
 }

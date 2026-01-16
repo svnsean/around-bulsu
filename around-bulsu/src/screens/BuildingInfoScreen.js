@@ -20,6 +20,11 @@ MapboxGL.setAccessToken('pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15
 
 const BuildingInfoScreen = ({ route, navigation }) => {
   const { building, userLocation, nodes, edges, blockages = [] } = route.params;
+  const userCoords = Array.isArray(userLocation)
+    ? userLocation
+    : userLocation
+      ? [userLocation.longitude, userLocation.latitude]
+      : null;
   const [distance, setDistance] = useState(null);
   const [pathPreview, setPathPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -44,13 +49,13 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
   // Calculate distance from user to building
   const calculateDistance = () => {
-    if (!userLocation) return;
+    if (!userCoords) return;
 
     const R = 6371e3; // Earth radius in meters
-    const φ1 = userLocation[1] * Math.PI / 180;
+    const φ1 = userCoords[1] * Math.PI / 180;
     const φ2 = building.latitude * Math.PI / 180;
-    const Δφ = (building.latitude - userLocation[1]) * Math.PI / 180;
-    const Δλ = (building.longitude - userLocation[0]) * Math.PI / 180;
+    const Δφ = (building.latitude - userCoords[1]) * Math.PI / 180;
+    const Δλ = (building.longitude - userCoords[0]) * Math.PI / 180;
 
     const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
               Math.cos(φ1) * Math.cos(φ2) *
@@ -63,7 +68,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
   // Generate path preview with full A* and calculate bounds
   const generatePathPreview = () => {
-    if (!userLocation || !nodes || !edges || nodes.length === 0) {
+    if (!userCoords || !nodes || !edges || nodes.length === 0) {
       return;
     }
 
@@ -100,7 +105,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
       // Find nearest nodes
       let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
       nodes.forEach(n => {
-        const dUser = getDistanceMeters(userLocation[1], userLocation[0], n.lat, n.lng);
+        const dUser = getDistanceMeters(userCoords[1], userCoords[0], n.lat, n.lng);
         const dDest = getDistanceMeters(building.latitude, building.longitude, n.lat, n.lng);
         if (dUser < minStart) { minStart = dUser; startNode = n; }
         if (dDest < minEnd) { minEnd = dDest; endNode = n; }
@@ -159,12 +164,12 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
       // Add user location and building as start/end
       if (pathCoordinates.length > 0) {
-        pathCoordinates.unshift(userLocation);
+        pathCoordinates.unshift(userCoords);
         pathCoordinates.push([building.longitude, building.latitude]);
       } else {
         // Fallback: direct line if no path found
         pathCoordinates = [
-          userLocation,
+          userCoords,
           [building.longitude, building.latitude]
         ];
       }
@@ -210,7 +215,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
   // Calculate full A* path for Unity AR
   const calculateFullPath = () => {
-    if (!userLocation || !nodes || !edges || nodes.length === 0) {
+    if (!userCoords || !nodes || !edges || nodes.length === 0) {
       return [];
     }
 
@@ -249,7 +254,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
       // Find nearest nodes to start and end
       let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
       nodes.forEach(n => {
-        const dUser = getDistanceMeters(userLocation[1], userLocation[0], n.lat, n.lng);
+        const dUser = getDistanceMeters(userCoords[1], userCoords[0], n.lat, n.lng);
         const dDest = getDistanceMeters(building.latitude, building.longitude, n.lat, n.lng);
         if (dUser < minStart) { minStart = dUser; startNode = n; }
         if (dDest < minEnd) { minEnd = dDest; endNode = n; }
@@ -342,7 +347,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
   const handleStartNavigation = () => {
     navigation.navigate('ARNavigation', {
       building,
-      userLocation,
+      userCoords,
       nodes,
       edges,
       blockages,
@@ -437,7 +442,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
                     paddingLeft: 40,
                     paddingRight: 40,
                   } : undefined}
-                  centerCoordinate={!mapBounds ? (userLocation || [building.longitude, building.latitude]) : undefined}
+                  centerCoordinate={!mapBounds ? (userCoords || [building.longitude, building.latitude]) : undefined}
                   zoomLevel={!mapBounds ? 16 : undefined}
                   animationDuration={500}
                 />
@@ -458,10 +463,10 @@ const BuildingInfoScreen = ({ route, navigation }) => {
                 )}
 
                 {/* User location marker */}
-                {userLocation && (
+                {userCoords && (
                   <MapboxGL.PointAnnotation
                     id="userMarker"
-                    coordinate={userLocation}
+                    coordinate={userCoords}
                   >
                     <View className="w-5 h-5 rounded-full bg-blue-500 border-3 border-white shadow-lg items-center justify-center">
                       <View className="w-2 h-2 rounded-full bg-white" />

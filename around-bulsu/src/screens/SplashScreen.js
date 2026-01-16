@@ -75,14 +75,6 @@ const SplashScreen = ({ onReady }) => {
 
   return (
     <View className="flex-1 items-center justify-center bg-maroon-800">
-      {/* Background Decorative Elements */}
-      <View 
-        className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-white/5" 
-      />
-      <View 
-        className="absolute -bottom-36 -right-36 w-96 h-96 rounded-full bg-white/5" 
-      />
-
       {/* Logo Container */}
       <Animated.View
         style={[
@@ -90,13 +82,7 @@ const SplashScreen = ({ onReady }) => {
         ]}
         className="items-center mb-16"
       >
-        {/* Logo Circle */}
-        <View 
-          className="w-28 h-28 rounded-full bg-white items-center justify-center mb-6"
-          style={styles.logoShadow}
-        >
-          <Feather name="navigation" size={48} color="#800000" />
-        </View>
+        <Feather name="navigation" size={48} color="#ffffff" style={{ marginBottom: 24 }} />
 
         {/* App Name */}
         <Text className="text-4xl font-bold text-white mb-2 tracking-wide">

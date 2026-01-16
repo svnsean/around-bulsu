@@ -1,8 +1,7 @@
-// MapEditor.js - Modern Tailwind UI with Pins, Nodes & View Controls
+// MapEditor.js - Modern Tailwind UI with Supabase
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Map, { Source, Layer, Marker } from 'react-map-gl';
-import { db } from './firebase';
-import { collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
+import { supabase, subscribeToTable } from './supabase';
 import { Map as MapIcon, MapPin, Plus, Trash2, Link2, Eye, Navigation, Search, X, Check, ChevronDown, Building2, Edit2 } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { Input, Textarea } from './components/ui/Input';
@@ -34,6 +33,7 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
   const [selectedNode, setSelectedNode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   
   // Add Building Modal
   const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
@@ -43,7 +43,6 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
   
   // View Controls
   const [showViewMenu, setShowViewMenu] = useState(false);
-  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [viewLayers, setViewLayers] = useState({
     buildings: true,
     nodes: true,
@@ -54,23 +53,13 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
 
   const { addToast } = useToast();
 
-  // Firestore listeners
+  // Supabase subscriptions
   useEffect(() => {
-    const unsubNodes = onSnapshot(collection(db, 'nodes'), (snap) => 
-      setNodes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubEdges = onSnapshot(collection(db, 'edges'), (snap) => 
-      setEdges(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubBuildings = onSnapshot(collection(db, 'buildings'), (snap) => 
-      setBuildings(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubZones = onSnapshot(collection(db, 'evacuationZones'), (snap) => 
-      setEvacuationZones(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubBlockages = onSnapshot(collection(db, 'blockages'), (snap) => 
-      setBlockages(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
+    const unsubNodes = subscribeToTable('nodes', setNodes);
+    const unsubEdges = subscribeToTable('edges', setEdges);
+    const unsubBuildings = subscribeToTable('buildings', setBuildings);
+    const unsubZones = subscribeToTable('evacuation_zones', setEvacuationZones);
+    const unsubBlockages = subscribeToTable('blockages', setBlockages);
     
     return () => { 
       unsubNodes(); 
@@ -81,22 +70,53 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
     };
   }, []);
 
+  // Set initial mode when component mounts (for add_building from Buildings tab)
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+      if (onModeApplied) onModeApplied();
+    }
+  }, [initialMode, onModeApplied]);
+
+  // Normalize string for search (lowercase, remove spaces/dashes)
+  const normalizeForSearch = (str) => {
+    return (str || '').toLowerCase().replace(/[-\\s]/g, '');
+  };
+
   const filteredBuildings = buildings.filter(building => {
     if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    if (building.name?.toLowerCase().includes(query)) return true;
+    const query = normalizeForSearch(searchQuery);
+    if (normalizeForSearch(building.name).includes(query)) return true;
     if (building.rooms && Array.isArray(building.rooms)) {
-      return building.rooms.some(room => room.toLowerCase().includes(query));
+      return building.rooms.some(room => normalizeForSearch(room).includes(query));
+    }
+    if (building.facilities && Array.isArray(building.facilities)) {
+      return building.facilities.some(facility => normalizeForSearch(facility).includes(query));
     }
     return false;
   });
+
+  // Highlight matching text in search results
+  const highlightMatch = (text, query) => {
+    if (!query.trim()) return text;
+    const normalizedQuery = normalizeForSearch(query);
+    const normalizedText = normalizeForSearch(text);
+    if (!normalizedText.includes(normalizedQuery)) return text;
+    
+    // Find approximate match position in original text
+    const regex = new RegExp(`(${query.replace(/[-\\s]/g, '[-\\s]*')})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) => 
+      regex.test(part) ? <mark key={i} className="bg-gold-200 text-maroon-900 px-0.5 rounded">{part}</mark> : part
+    );
+  };
 
   const handleMapClick = useCallback(async (event) => {
     const { lng, lat } = event.lngLat;
 
     if (mode === 'add_node') {
       try {
-        await addDoc(collection(db, 'nodes'), { lng, lat });
+        await supabase.from('nodes').insert([{ lng, lat }]);
         addToast({ title: 'Success', description: 'Node added successfully', variant: 'success' });
       } catch (error) {
         addToast({ title: 'Error', description: 'Error adding node', variant: 'error' });
@@ -121,13 +141,14 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
     }
     
     try {
-      await addDoc(collection(db, 'buildings'), { 
+      await supabase.from('buildings').insert([{ 
         name: buildingName.trim(), 
         description: buildingDesc.trim(),
         longitude: pendingBuildingLocation.lng, 
         latitude: pendingBuildingLocation.lat,
-        rooms: []
-      });
+        rooms: [],
+        images: []
+      }]);
       closeAddBuildingModal();
       addToast({ title: 'Success', description: 'Building pin added successfully', variant: 'success' });
     } catch (error) {
@@ -142,15 +163,10 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
     if (mode === 'delete') {
       if(window.confirm("Delete this node and all connected edges?")) {
         try {
-          const nodeEdges = edges.filter(edge => 
-            edge.from === node.id || edge.to === node.id
-          );
-          
-          for (const edge of nodeEdges) {
-            await deleteDoc(doc(db, 'edges', edge.id));
-          }
-          
-          await deleteDoc(doc(db, 'nodes', node.id));
+          // Delete edges connected to this node
+          await supabase.from('edges').delete().eq('from_node', node.id);
+          await supabase.from('edges').delete().eq('to_node', node.id);
+          await supabase.from('nodes').delete().eq('id', node.id);
           addToast({ title: 'Deleted', description: 'Node deleted', variant: 'success' });
         } catch (error) {
           addToast({ title: 'Error', description: 'Error deleting node', variant: 'error' });
@@ -170,12 +186,13 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
           return;
         }
 
-        const existingEdge = edges.find(edge => 
-          (edge.from === selectedNode.id && edge.to === node.id) ||
-          (edge.from === node.id && edge.to === selectedNode.id)
-        );
+        // Check for existing edge
+        const { data: existingEdges } = await supabase
+          .from('edges')
+          .select('*')
+          .or(`and(from_node.eq.${selectedNode.id},to_node.eq.${node.id}),and(from_node.eq.${node.id},to_node.eq.${selectedNode.id})`);
         
-        if (existingEdge) {
+        if (existingEdges && existingEdges.length > 0) {
           addToast({ title: 'Error', description: 'Edge already exists between these nodes', variant: 'error' });
           return;
         }
@@ -183,11 +200,11 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
         try {
           const weight = Math.hypot(node.lng - selectedNode.lng, node.lat - selectedNode.lat);
           
-          await addDoc(collection(db, 'edges'), {
-            from: selectedNode.id,
-            to: node.id,
+          await supabase.from('edges').insert([{
+            from_node: selectedNode.id,
+            to_node: node.id,
             weight: weight
-          });
+          }]);
 
           addToast({ title: 'Success', description: 'Edge created successfully', variant: 'success' });
           setSelectedNode(node);
@@ -196,10 +213,15 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
         }
       }
     }
-  }, [mode, selectedNode, edges, addToast]);
+  }, [mode, selectedNode, addToast]);
 
   const handleBuildingClick = useCallback((e, building) => {
-    if (e) e.stopPropagation();
+    // Handle both regular events and Mapbox marker events
+    if (e && e.originalEvent) {
+      e.originalEvent.stopPropagation();
+    } else if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
     
     if (mode === 'delete') {
       if(window.confirm(`Delete building pin "${building.name}"?`)) {
@@ -212,7 +234,7 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
 
   const deleteBuilding = async (id) => {
     try {
-      await deleteDoc(doc(db, 'buildings', id));
+      await supabase.from('buildings').delete().eq('id', id);
       setSelectedBuilding(null);
       addToast({ title: 'Deleted', description: 'Building pin deleted', variant: 'success' });
     } catch (error) {
@@ -247,27 +269,18 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
     setShowSearchDropdown(false);
   };
 
-  // Set initial mode when component mounts (for add_building from Buildings tab)
-  useEffect(() => {
-    if (initialMode) {
-      setMode(initialMode);
-      // Clear the initial mode flag so it doesn't persist
-      if (onModeApplied) onModeApplied();
-    }
-  }, [initialMode, onModeApplied]);
-
   // GeoJSON Data
   const edgesGeoJSON = {
     type: 'FeatureCollection',
     features: edges
       .filter(edge => {
-        const n1 = nodes.find(n => n.id === edge.from);
-        const n2 = nodes.find(n => n.id === edge.to);
+        const n1 = nodes.find(n => n.id === edge.from_node);
+        const n2 = nodes.find(n => n.id === edge.to_node);
         return n1 && n2;
       })
       .map(edge => {
-        const n1 = nodes.find(n => n.id === edge.from);
-        const n2 = nodes.find(n => n.id === edge.to);
+        const n1 = nodes.find(n => n.id === edge.from_node);
+        const n2 = nodes.find(n => n.id === edge.to_node);
         return {
           type: 'Feature',
           geometry: { 
@@ -392,10 +405,17 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
                               <Building2 className="w-4 h-4 text-maroon-800" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{building.name}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {highlightMatch(building.name, searchQuery)}
+                              </p>
                               {building.rooms && building.rooms.length > 0 && (
                                 <p className="text-xs text-gray-500 truncate mt-0.5">
-                                  {building.rooms.slice(0, 3).join(', ')}
+                                  {building.rooms.slice(0, 3).map((room, i) => (
+                                    <span key={i}>
+                                      {i > 0 && ', '}
+                                      {highlightMatch(room, searchQuery)}
+                                    </span>
+                                  ))}
                                   {building.rooms.length > 3 && ` +${building.rooms.length - 3} more`}
                                 </p>
                               )}
@@ -511,36 +531,35 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
         </div>
       </div>
 
-      {/* Instructions */}
-      {mode !== 'view' && (
-        <div className={cn(
-          "flex items-center justify-center gap-2 py-3 text-sm font-medium border-b",
-          mode === 'delete' 
-            ? "bg-red-50 border-red-200 text-red-700"
-            : mode === 'add_building'
-              ? "bg-amber-50 border-amber-200 text-amber-700"
-              : "bg-blue-50 border-blue-200 text-blue-700"
-        )}>
-          {mode === 'add_node' && (
-            <><Navigation className="w-4 h-4" /> Click on the map to add a navigation node</>
-          )}
-          {mode === 'add_building' && (
-            <><MapPin className="w-4 h-4" /> Click on the map to place a building pin</>
-          )}
-          {mode === 'connect_node' && !selectedNode && (
-            <><Link2 className="w-4 h-4" /> Click on a node to start connecting</>
-          )}
-          {mode === 'connect_node' && selectedNode && (
-            <><Link2 className="w-4 h-4" /> Now click another node to create connection (or same node to deselect)</>
-          )}
-          {mode === 'delete' && (
-            <><Trash2 className="w-4 h-4" /> Click on nodes or building pins to delete them</>
-          )}
-        </div>
-      )}
-
       {/* Map */}
       <div className="flex-1 relative">
+        {/* Instructions Overlay - positioned absolute so it doesn't push the map */}
+        {mode !== 'view' && (
+          <div className={cn(
+            "absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 rounded-full shadow-lg text-sm font-medium",
+            mode === 'delete' 
+              ? "bg-red-500 text-white"
+              : mode === 'add_building'
+                ? "bg-amber-500 text-white"
+                : "bg-blue-500 text-white"
+          )}>
+            {mode === 'add_node' && (
+              <><Navigation className="w-4 h-4" /> Click on the map to add a node</>
+            )}
+            {mode === 'add_building' && (
+              <><MapPin className="w-4 h-4" /> Click on the map to place a building</>
+            )}
+            {mode === 'connect_node' && !selectedNode && (
+              <><Link2 className="w-4 h-4" /> Click a node to start connecting</>
+            )}
+            {mode === 'connect_node' && selectedNode && (
+              <><Link2 className="w-4 h-4" /> Click another node to connect</>
+            )}
+            {mode === 'delete' && (
+              <><Trash2 className="w-4 h-4" /> Click to delete nodes or buildings</>
+            )}
+          </div>
+        )}
         <Map
           ref={mapRef}
           {...viewState}
@@ -584,168 +603,123 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
               key={node.id} 
               longitude={node.lng} 
               latitude={node.lat}
-              anchor="center"
+              onClick={(e) => handleNodeClick(e, node)}
             >
               <div 
-                onClick={(e) => handleNodeClick({ originalEvent: e }, node)}
                 className={cn(
-                  "rounded-full border-[3px] border-white cursor-pointer shadow-lg transition-all",
-                  selectedNode?.id === node.id 
-                    ? "w-5 h-5 bg-emerald-500" 
-                    : "w-3.5 h-3.5 bg-blue-500"
+                  "w-4 h-4 rounded-full border-2 border-white shadow-md cursor-pointer transition-all hover:scale-125",
+                  selectedNode?.id === node.id ? "bg-orange-500 scale-125" : "bg-blue-500"
                 )}
               />
             </Marker>
           ))}
 
-          {/* Building Pins */}
-          {viewLayers.buildings && filteredBuildings.map(b => (
+          {/* Building Markers */}
+          {viewLayers.buildings && buildings.map((building) => (
             <Marker 
-              key={b.id} 
-              longitude={b.longitude} 
-              latitude={b.latitude} 
-              anchor="bottom"
+              key={building.id} 
+              longitude={building.longitude} 
+              latitude={building.latitude}
+              onClick={(e) => handleBuildingClick(e, building)}
             >
-              <div 
-                onClick={(e) => handleBuildingClick(e, b)}
-                className="flex flex-col items-center cursor-pointer group"
-              >
-                <div className="w-8 h-8 bg-maroon-800 rounded-lg flex items-center justify-center shadow-lg border-2 border-white group-hover:scale-110 transition-transform">
-                  <Building2 className="w-4 h-4 text-white" />
+              <div className="flex flex-col items-center cursor-pointer group">
+                <div className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-transform group-hover:scale-110",
+                  selectedBuilding?.id === building.id ? "bg-gold-400" : "bg-maroon-800"
+                )}>
+                  <Building2 className={cn(
+                    "w-4 h-4",
+                    selectedBuilding?.id === building.id ? "text-maroon-900" : "text-white"
+                  )} />
                 </div>
-                <div className="mt-1 px-2 py-1 bg-white rounded text-xs font-semibold text-gray-700 shadow-md whitespace-nowrap max-w-[120px] overflow-hidden text-ellipsis">
-                  {b.name}
+                <div className="mt-1 px-2 py-0.5 bg-white rounded shadow text-xs font-medium text-gray-700 whitespace-nowrap">
+                  {building.name}
                 </div>
               </div>
             </Marker>
           ))}
-
-          {/* Pending Building Location */}
-          {pendingBuildingLocation && (
-            <Marker 
-              longitude={pendingBuildingLocation.lng} 
-              latitude={pendingBuildingLocation.lat}
-              anchor="bottom"
-            >
-              <div className="flex flex-col items-center opacity-70">
-                <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center shadow-lg border-2 border-white">
-                  <Building2 className="w-4 h-4 text-white" />
-                </div>
-                <div className="mt-1 px-2 py-1 bg-white rounded text-xs font-semibold text-gray-700 shadow-md">
-                  New Building
-                </div>
-              </div>
-            </Marker>
-          )}
         </Map>
 
         {/* Building Info Panel */}
         {selectedBuilding && (
-          <div className="absolute top-4 right-4 w-80 bg-white rounded-xl shadow-xl overflow-hidden z-10">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-              <h4 className="font-bold text-maroon-800">{selectedBuilding.name}</h4>
-              <button 
-                onClick={() => setSelectedBuilding(null)}
-                className="w-7 h-7 bg-gray-100 rounded-md flex items-center justify-center text-gray-500 hover:bg-gray-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            
-            {selectedBuilding.description && (
-              <p className="px-4 py-3 text-sm text-gray-600 border-b border-gray-100">
-                {selectedBuilding.description}
-              </p>
-            )}
-            
-            {selectedBuilding.rooms && selectedBuilding.rooms.length > 0 && (
-              <div className="px-4 py-3">
-                <strong className="text-sm text-gray-700">Rooms ({selectedBuilding.rooms.length}):</strong>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {selectedBuilding.rooms.map((room, idx) => (
-                    <Badge key={idx} variant="secondary">{room}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            <div className="px-4 pb-4 flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  if (onEditBuilding) {
-                    onEditBuilding(selectedBuilding.id);
-                    setSelectedBuilding(null);
-                  }
-                }}
-              >
-                <Edit2 className="w-4 h-4" /> Edit Details
-              </Button>
-              {mode === 'delete' && (
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => {
-                    if (window.confirm(`Delete "${selectedBuilding.name}"?`)) {
-                      deleteBuilding(selectedBuilding.id);
-                    }
-                  }}
+          <div className="absolute top-4 right-4 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-10">
+            <div className="p-4 bg-maroon-800 text-white">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">{selectedBuilding.name}</h3>
+                <button 
+                  onClick={() => setSelectedBuilding(null)}
+                  className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete
-                </Button>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <p className="text-sm text-gray-600 mb-3">
+                {selectedBuilding.description || 'No description available'}
+              </p>
+              {selectedBuilding.rooms && selectedBuilding.rooms.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Rooms</p>
+                  <div className="flex flex-wrap gap-1">
+                    {selectedBuilding.rooms.slice(0, 5).map((room, i) => (
+                      <Badge key={i} variant="secondary">{room}</Badge>
+                    ))}
+                    {selectedBuilding.rooms.length > 5 && (
+                      <Badge variant="outline">+{selectedBuilding.rooms.length - 5} more</Badge>
+                    )}
+                  </div>
+                </div>
               )}
+              <Button 
+                className="w-full" 
+                onClick={() => onEditBuilding && onEditBuilding(selectedBuilding.id)}
+              >
+                <Edit2 className="w-4 h-4" />
+                Edit Building
+              </Button>
             </div>
           </div>
         )}
       </div>
 
       {/* Add Building Modal */}
-      <Modal open={showAddBuildingModal} onClose={closeAddBuildingModal}>
-        <ModalHeader onClose={closeAddBuildingModal}>
-          <ModalTitle>Add Building Pin</ModalTitle>
+      <Modal open={showAddBuildingModal} onOpenChange={setShowAddBuildingModal}>
+        <ModalHeader>
+          <ModalTitle>Add New Building</ModalTitle>
         </ModalHeader>
-        <ModalBody className="space-y-4">
-          {pendingBuildingLocation ? (
-            <div className="flex items-center gap-3 px-4 py-3 bg-green-50 rounded-lg text-green-700">
-              <Check className="w-5 h-5" />
-              <span className="text-sm font-medium">Location selected on map</span>
+        <ModalBody>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Building Name *</label>
+              <Input
+                value={buildingName}
+                onChange={(e) => setBuildingName(e.target.value)}
+                placeholder="e.g., Engineering Building"
+              />
             </div>
-          ) : (
-            <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 rounded-lg text-amber-700">
-              <MapPin className="w-5 h-5" />
-              <span className="text-sm font-medium">Click on the map to select location</span>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Description</label>
+              <Textarea
+                value={buildingDesc}
+                onChange={(e) => setBuildingDesc(e.target.value)}
+                placeholder="Brief description of the building..."
+                rows={3}
+              />
             </div>
-          )}
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Building Name *</label>
-            <Input
-              value={buildingName}
-              onChange={(e) => setBuildingName(e.target.value)}
-              placeholder="e.g., Main Building"
-              autoFocus
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Description</label>
-            <Textarea
-              value={buildingDesc}
-              onChange={(e) => setBuildingDesc(e.target.value)}
-              placeholder="Brief description of the building..."
-              rows={3}
-            />
+            {pendingBuildingLocation && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm">
+                <p className="text-gray-500">Location</p>
+                <p className="font-mono text-xs text-gray-700">
+                  {pendingBuildingLocation.lat.toFixed(6)}, {pendingBuildingLocation.lng.toFixed(6)}
+                </p>
+              </div>
+            )}
           </div>
         </ModalBody>
         <ModalFooter>
           <Button variant="outline" onClick={closeAddBuildingModal}>Cancel</Button>
-          <Button 
-            onClick={handleSaveBuilding}
-            disabled={!pendingBuildingLocation || !buildingName.trim()}
-          >
-            Save Building
-          </Button>
+          <Button onClick={handleSaveBuilding}>Add Building</Button>
         </ModalFooter>
       </Modal>
     </div>

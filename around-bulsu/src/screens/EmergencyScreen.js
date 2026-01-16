@@ -10,46 +10,26 @@ import {
 } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import { Icon } from '../components/ui';
+import { Ionicons } from '@expo/vector-icons';
+import { supabase, subscribeToTable } from '../supabase';
 
-const BSU_CENTER = [120.813778, 14.857830];
-
-MapboxGL.setAccessToken('pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15MW41cWltIn0.Qz2opq51Zz3oj-MGPz7aow');
+MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
 
 const CAMPUS_BOUNDS = {
-  north: 14.860,
-  south: 14.855,
-  east: 120.816,
-  west: 120.811
+  north: 14.8485,
+  south: 14.8410,
+  east: 120.8150,
+  west: 120.8050
 };
 
-// Helper function moved outside component to prevent recreation
 const getDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371e3;
-  const φ1 = lat1 * Math.PI / 180;
-  const φ2 = lat2 * Math.PI / 180;
-  const Δφ = (lat2 - lat1) * Math.PI / 180;
-  const Δλ = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-// Point in polygon check - moved outside component
-const isPointInPolygon = (x, y, polygon) => {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng, yi = polygon[i].lat;
-    const xj = polygon[j].lng, yj = polygon[j].lat;
-    const intersect = ((yi > y) !== (yj > y)) &&
-                      (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
+  const p1 = lat1 * Math.PI / 180;
+  const p2 = lat2 * Math.PI / 180;
+  const dp = (lat2 - lat1) * Math.PI / 180;
+  const dl = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 const EmergencyScreen = ({ navigation }) => {
@@ -119,20 +99,14 @@ const EmergencyScreen = ({ navigation }) => {
     };
   }, []);
 
-  // Firebase listeners
+  // Supabase listeners
   useEffect(() => {
-    const unsubZones = onSnapshot(collection(db, 'evacuationZones'), (snap) => {
-      setEvacuationZones(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubZones = subscribeToTable('evacuation_zones', setEvacuationZones);
+    const unsubBlockages = subscribeToTable('blockages', (data) => {
+      setBlockages(data.filter(b => b.active));
     });
-    const unsubBlockages = onSnapshot(collection(db, 'blockages'), (snap) => {
-      setBlockages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubNodes = onSnapshot(collection(db, 'nodes'), (snap) => {
-      setNodes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubEdges = onSnapshot(collection(db, 'edges'), (snap) => {
-      setEdges(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    const unsubNodes = subscribeToTable('nodes', setNodes);
+    const unsubEdges = subscribeToTable('edges', setEdges);
 
     return () => {
       unsubZones();
@@ -389,7 +363,7 @@ const EmergencyScreen = ({ navigation }) => {
       >
         <MapboxGL.Camera
           zoomLevel={17}
-          centerCoordinate={userLocation || BSU_CENTER}
+          centerCoordinate={userLocation || [120.8103, 14.8448]}
           animationDuration={1000}
         />
 
@@ -453,98 +427,114 @@ const EmergencyScreen = ({ navigation }) => {
         })}
       </MapboxGL.MapView>
 
-      {/* Header Bar */}
-      <View className="absolute top-0 left-0 right-0 pt-12 pb-4 px-5 bg-maroon-800">
-        <Text className="text-xl font-bold text-white text-center">Emergency</Text>
+      {/* Legend */}
+      <View style={styles.legend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
+          <Text style={styles.legendText}>Safe Zones</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: '#ef4444' }]} />
+          <Text style={styles.legendText}>Blocked Areas</Text>
+        </View>
       </View>
 
       {/* Outside Campus Warning */}
       {isOutsideCampus && (
-        <View className="absolute top-24 left-4 right-4 bg-amber-50 p-4 rounded-2xl border border-amber-200 flex-row items-center shadow-sm">
-          <View className="w-10 h-10 rounded-full bg-amber-100 items-center justify-center mr-3">
-            <Icon name="alert" size={20} color="#D97706" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-amber-900 font-bold text-sm">Outside Campus</Text>
-            <Text className="text-amber-700 text-xs mt-0.5">Evacuation guidance unavailable</Text>
-          </View>
+        <View style={styles.warningBanner}>
+          <Ionicons name="warning" size={20} color="#fff" />
+          <Text style={styles.warningText}>You are outside the campus</Text>
         </View>
       )}
 
-      {/* Status Panel - Only show when inside campus */}
-      {!isOutsideCampus && (
-      <View className="absolute top-24 right-4 bg-white p-4 rounded-2xl shadow-lg min-w-[160px]">
-        {/* Legend */}
-        <View className="flex-row items-center mb-3">
-          <View className="flex-row items-center flex-1">
-            <View className="w-3 h-3 rounded-full bg-green-500 mr-2" />
-            <Text className="text-xs text-gray-600">Safe Zone</Text>
-          </View>
-          <View className="bg-green-100 px-2 py-0.5 rounded-full">
-            <Text className="text-xs font-bold text-green-700">{evacuationZones.length}</Text>
-          </View>
-        </View>
-        <View className="flex-row items-center mb-3">
-          <View className="flex-row items-center flex-1">
-            <View className="w-3 h-3 rounded-full bg-red-500 mr-2" />
-            <Text className="text-xs text-gray-600">Blockage</Text>
-          </View>
-          <View className="bg-red-100 px-2 py-0.5 rounded-full">
-            <Text className="text-xs font-bold text-red-700">{blockages.filter(b => b.active).length}</Text>
-          </View>
-        </View>
-
-        {/* Nearest Zone Info */}
-        {nearestZone && (
-          <View className="pt-3 border-t border-gray-100">
-            <Text className="text-xs text-gray-500 uppercase tracking-wider mb-1">Nearest Safe Zone</Text>
-            <Text className="text-sm font-bold text-gray-900">{nearestZone.name}</Text>
-            <View className="flex-row items-center mt-1">
-              <Icon name="navigate" size={12} color="#16a34a" style={{ marginRight: 4 }} />
-              <Text className="text-xs font-semibold text-green-600">{Math.round(nearestZone.distance)}m away</Text>
-            </View>
-          </View>
-        )}
-      </View>
-      )}
-
-      {/* Bottom Action Panel - positioned above floating tab bar */}
-      <View className="absolute bottom-28 left-4 right-4">
-        <Animated.View 
-          style={{ transform: [{ scale: pulseAnim }] }}
-          className="bg-white rounded-2xl shadow-xl overflow-hidden"
-        >
-          <TouchableOpacity
-            className={`flex-row items-center justify-center py-5 px-6 ${
-              isOutsideCampus ? 'bg-gray-300' : 'bg-red-600 active:bg-red-700'
-            }`}
-            onPress={handleActivateEvacuation}
-            disabled={isOutsideCampus}
-            activeOpacity={0.9}
-          >
-            <View className={`w-10 h-10 rounded-full items-center justify-center mr-4 ${
-              isOutsideCampus ? 'bg-gray-400' : 'bg-white/20'
-            }`}>
-              <Icon name="alert-circle" size={24} color="#FFFFFF" />
-            </View>
-            <View className="flex-1">
-              <Text className="text-white text-lg font-bold">
-                {isOutsideCampus ? 'Unavailable' : 'Activate Evacuation'}
-              </Text>
-              {!isOutsideCampus && nearestZone && (
-                <Text className="text-white/80 text-sm">
-                  Navigate to {nearestZone.name}
-                </Text>
-              )}
-            </View>
-            {!isOutsideCampus && (
-              <Icon name="chevron-right" size={24} color="rgba(255,255,255,0.8)" />
-            )}
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
+      {/* Activate Evacuation Button */}
+      <TouchableOpacity style={styles.evacuateButton} onPress={handleActivateEvacuation}>
+        <Ionicons name="alert-circle" size={24} color="#fff" />
+        <Text style={styles.evacuateText}>Activate Evacuation</Text>
+      </TouchableOpacity>
     </View>
   );
+};
+
+const styles = {
+  container: { flex: 1 },
+  map: { flex: 1 },
+  userMarker: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(59, 130, 246, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  userMarkerInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#3b82f6',
+    borderWidth: 2,
+    borderColor: '#fff'
+  },
+  legend: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+    padding: 12,
+    borderRadius: 8
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  legendColor: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    marginRight: 8
+  },
+  legendText: {
+    color: '#fff',
+    fontSize: 12
+  },
+  warningBanner: {
+    position: 'absolute',
+    top: 130,
+    left: 16,
+    right: 16,
+    backgroundColor: '#f59e0b',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  warningText: {
+    color: '#fff',
+    fontWeight: '600'
+  },
+  evacuateButton: {
+    position: 'absolute',
+    bottom: 96,
+    left: 16,
+    right: 16,
+    backgroundColor: '#ef4444',
+    padding: 16,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    zIndex: 10,
+    elevation: 10
+  },
+  evacuateText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600'
+  }
 };
 
 export default EmergencyScreen;

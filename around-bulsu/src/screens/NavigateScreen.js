@@ -1,15 +1,21 @@
 // src/screens/NavigateScreen.js
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
-import { collection, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Alert, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { DrawerActions } from '@react-navigation/native';
-import { db } from '../firebase';
+import { supabase, subscribeToTable } from '../supabase';
 import SearchBottomSheet from '../components/SearchBottomSheet';
-import { Icon } from '../components/ui';
+import { Ionicons } from '@expo/vector-icons';
 
-MapboxGL.setAccessToken('pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15MW41cWltIn0.Qz2opq51Zz3oj-MGPz7aow');
+MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
+
+const CAMPUS_BOUNDS = {
+  north: 14.8485,
+  south: 14.8410,
+  east: 120.8150,
+  west: 120.8050
+};
 
 const BSU_CENTER = [120.813778, 14.857830]; // From admin site
 
@@ -21,22 +27,28 @@ const NavigateScreen = ({ navigation }) => {
   const [blockages, setBlockages] = useState([]);
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedBuilding, setSelectedBuilding] = useState(null);
   const bottomSheetRef = useRef(null);
+  const mapRef = useRef(null);
+  const cameraRef = useRef(null);
 
   // Location tracking
   useEffect(() => {
     (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert("Permission Denied", "Location permission is required for navigation");
+        Alert.alert('Permission Denied', 'Location permission is required for navigation');
         return;
       }
-      
-      let location = await Location.getCurrentPositionAsync({
+
+      const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High
       });
       
-      const coords = [location.coords.longitude, location.coords.latitude];
+      const coords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
       setUserLocation(coords);
       checkIfOutsideCampus(coords);
 
@@ -46,34 +58,29 @@ const NavigateScreen = ({ navigation }) => {
         timeInterval: 2000,
         distanceInterval: 5
       }, (loc) => {
-        const newCoords = [loc.coords.longitude, loc.coords.latitude];
+        const newCoords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude
+        };
         setUserLocation(newCoords);
         checkIfOutsideCampus(newCoords);
       });
     })();
   }, []);
 
-  // Firebase listeners
+  // Supabase listeners
   useEffect(() => {
-    const unsubBuildings = onSnapshot(collection(db, 'buildings'), (snap) => {
-      setBuildings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubBuildings = subscribeToTable('buildings', (data) => {
+      setBuildings(data);
       setIsLoading(false);
     });
-    const unsubNodes = onSnapshot(collection(db, 'nodes'), (snap) => 
-      setNodes(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubEdges = onSnapshot(collection(db, 'edges'), (snap) => 
-      setEdges(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-    const unsubBlockages = onSnapshot(collection(db, 'blockages'), (snap) => 
-      setBlockages(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
+    const unsubNodes = subscribeToTable('nodes', setNodes);
+    const unsubEdges = subscribeToTable('edges', setEdges);
 
-    return () => { 
-      unsubBuildings?.(); 
-      unsubNodes?.(); 
-      unsubEdges?.();
-      unsubBlockages?.();
+    return () => {
+      unsubBuildings();
+      unsubNodes();
+      unsubEdges();
     };
   }, []);
 
@@ -81,26 +88,23 @@ const NavigateScreen = ({ navigation }) => {
   const checkIfOutsideCampus = (coords) => {
     if (!coords) return;
     
-    const [lng, lat] = coords;
-    // BSU rough boundaries (adjust as needed)
-    const bounds = {
-      north: 14.860,
-      south: 14.855,
-      east: 120.816,
-      west: 120.811
-    };
-
-    const outside = lat > bounds.north || lat < bounds.south || 
-                    lng > bounds.east || lng < bounds.west;
+    const outside = coords.latitude > CAMPUS_BOUNDS.north ||
+                    coords.latitude < CAMPUS_BOUNDS.south ||
+                    coords.longitude > CAMPUS_BOUNDS.east ||
+                    coords.longitude < CAMPUS_BOUNDS.west;
     
     setIsOutsideCampus(outside);
   };
 
   // Handle building pin click
   const handleBuildingPress = (building) => {
+    setSelectedBuilding(building);
+    const userCoords = userLocation
+      ? [userLocation.longitude, userLocation.latitude]
+      : null;
     navigation.navigate('BuildingInfo', { 
       building,
-      userLocation,
+      userLocation: userCoords,
       nodes,
       edges,
       blockages
@@ -117,6 +121,16 @@ const NavigateScreen = ({ navigation }) => {
       edges,
       blockages
     });
+  };
+
+  const centerOnUser = () => {
+    if (userLocation && cameraRef.current) {
+      cameraRef.current.setCamera({
+        centerCoordinate: [userLocation.longitude, userLocation.latitude],
+        zoomLevel: 18,
+        animationDuration: 500
+      });
+    }
   };
 
   return (
@@ -137,17 +151,19 @@ const NavigateScreen = ({ navigation }) => {
         style={styles.menuShadow}
         onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
       >
-        <Icon name="menu" size={22} color="#800000" />
+        <Ionicons name="menu" size={28} color="#800000" />
       </TouchableOpacity>
 
       <MapboxGL.MapView 
+        ref={mapRef}
         style={{ flex: 1 }} 
         styleURL={MapboxGL.StyleURL.Street}
         logoEnabled={false}
       >
         <MapboxGL.Camera 
+          ref={cameraRef}
           zoomLevel={17} 
-          centerCoordinate={userLocation || BSU_CENTER}
+          centerCoordinate={userLocation ? [userLocation.longitude, userLocation.latitude] : BSU_CENTER}
           animationDuration={1000}
         />
         
@@ -177,12 +193,17 @@ const NavigateScreen = ({ navigation }) => {
       {/* Outside Campus Warning */}
       {isOutsideCampus && (
         <View className="absolute top-12 left-16 right-4 bg-amber-500 p-3 rounded-lg items-center shadow-lg flex-row justify-center">
-          <Icon name="alert" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+          <Ionicons name="warning" size={20} color="#fff" style={{ marginRight: 6 }} />
           <Text className="text-white font-bold text-sm">
-            You are outside BSU Campus
+            You are outside the campus
           </Text>
         </View>
       )}
+
+      {/* Center on User Button */}
+      <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
+        <Ionicons name="locate" size={24} color="#fff" />
+      </TouchableOpacity>
 
       {/* Search Bottom Sheet */}
       <SearchBottomSheet
@@ -210,6 +231,32 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 5,
   },
+  centerButton: {
+    position: 'absolute',
+    bottom: 200,
+    right: 16,
+    backgroundColor: '#3b82f6',
+    padding: 12,
+    borderRadius: 12,
+    elevation: 5
+  },
+  warningBanner: {
+    position: 'absolute',
+    top: 100,
+    left: 16,
+    right: 16,
+    backgroundColor: '#f59e0b',
+    padding: 12,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8
+  },
+  warningText: {
+    color: '#fff',
+    fontWeight: '600'
+  }
 });
 
 export default NavigateScreen;

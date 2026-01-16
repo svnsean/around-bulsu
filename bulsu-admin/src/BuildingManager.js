@@ -1,8 +1,6 @@
-// BuildingManager.js - Modern Tailwind UI Version
+// BuildingManager.js - Modern Tailwind UI with Supabase
 import React, { useState, useEffect, useRef } from 'react';
-import { db, storage } from './firebase';
-import { collection, addDoc, onSnapshot, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase, subscribeToTable, uploadImage } from './supabase';
 import { Search, Plus, Edit2, Trash2, X, Building2, DoorOpen, Upload, Image } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { Input, Textarea } from './components/ui/Input';
@@ -15,16 +13,15 @@ import { cn } from './lib/utils';
 const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor }) => {
   const [buildings, setBuildings] = useState([]);
   const [editingBuilding, setEditingBuilding] = useState(null);
-  const [newRoom, setNewRoom] = useState('');
   const [editRoom, setEditRoom] = useState('');
+  const [editFacility, setEditFacility] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
   const { addToast } = useToast();
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'buildings'), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const unsub = subscribeToTable('buildings', (data) => {
       // Sort alphabetically by name
       data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       setBuildings(data);
@@ -55,19 +52,17 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
     }
   };
 
-  const handleAddRoom = () => {
-    // This is now only for the edit modal
-  };
-
   const startEdit = (building) => {
     setEditingBuilding({ 
       id: building.id,
       name: building.name || '',
       description: building.description || '',
       rooms: building.rooms || [],
+      facilities: building.facilities || [],
       images: building.images || []
     });
     setEditRoom('');
+    setEditFacility('');
   };
 
   // Image upload handler
@@ -89,18 +84,7 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
 
     setUploadingImage(true);
     try {
-      // Create a unique filename
-      const timestamp = Date.now();
-      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const storageRef = ref(storage, `buildings/${editingBuilding.id}/${timestamp}_${sanitizedName}`);
-      
-      // Upload with metadata
-      const metadata = { contentType: file.type };
-      const uploadResult = await uploadBytes(storageRef, file, metadata);
-      console.log('Upload successful:', uploadResult);
-      
-      const downloadURL = await getDownloadURL(storageRef);
-      console.log('Download URL:', downloadURL);
+      const downloadURL = await uploadImage(file, `buildings/${editingBuilding.id}`);
       
       setEditingBuilding({
         ...editingBuilding,
@@ -124,19 +108,41 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
   };
 
   const handleAddEditRoom = () => {
-    if (editRoom.trim() && !editingBuilding.rooms.includes(editRoom.trim())) {
+    if (!editRoom.trim()) return;
+    // Support comma-separated input
+    const newRooms = editRoom.split(',').map(r => r.trim()).filter(r => r && !editingBuilding.rooms.includes(r));
+    if (newRooms.length > 0) {
       setEditingBuilding({
         ...editingBuilding,
-        rooms: [...editingBuilding.rooms, editRoom.trim()]
+        rooms: [...editingBuilding.rooms, ...newRooms].sort((a, b) => a.localeCompare(b))
       });
-      setEditRoom('');
     }
+    setEditRoom('');
+  };
+
+  const handleAddEditFacility = () => {
+    if (!editFacility.trim()) return;
+    // Support comma-separated input
+    const newFacilities = editFacility.split(',').map(f => f.trim()).filter(f => f && !editingBuilding.facilities.includes(f));
+    if (newFacilities.length > 0) {
+      setEditingBuilding({
+        ...editingBuilding,
+        facilities: [...editingBuilding.facilities, ...newFacilities].sort((a, b) => a.localeCompare(b))
+      });
+    }
+    setEditFacility('');
   };
 
   const handleRemoveEditRoom = (index) => {
     const updatedRooms = [...editingBuilding.rooms];
     updatedRooms.splice(index, 1);
     setEditingBuilding({ ...editingBuilding, rooms: updatedRooms });
+  };
+
+  const handleRemoveEditFacility = (index) => {
+    const updatedFacilities = [...editingBuilding.facilities];
+    updatedFacilities.splice(index, 1);
+    setEditingBuilding({ ...editingBuilding, facilities: updatedFacilities });
   };
 
   const handleSaveEdit = async () => {
@@ -146,13 +152,20 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
     }
 
     try {
-      await updateDoc(doc(db, 'buildings', editingBuilding.id), {
-        name: editingBuilding.name.trim(),
-        description: editingBuilding.description.trim(),
-        rooms: editingBuilding.rooms.map(r => r.trim()).filter(r => r),
-        images: editingBuilding.images || [],
-        updatedAt: new Date()
-      });
+      const { error } = await supabase
+        .from('buildings')
+        .update({
+          name: editingBuilding.name.trim(),
+          description: editingBuilding.description.trim(),
+          rooms: editingBuilding.rooms.map(r => r.trim()).filter(r => r).sort((a, b) => a.localeCompare(b)),
+          facilities: editingBuilding.facilities.map(f => f.trim()).filter(f => f).sort((a, b) => a.localeCompare(b)),
+          images: editingBuilding.images || [],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingBuilding.id);
+
+      if (error) throw error;
+
       setEditingBuilding(null);
       setEditRoom('');
       addToast({ title: 'Success', description: 'Building updated successfully', variant: 'success' });
@@ -162,39 +175,36 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
     }
   };
 
-  const handleDelete = async (id, name) => {
-    if (window.confirm(`Delete "${name}"? This will also remove all associated markers.`)) {
-      try {
-        await deleteDoc(doc(db, 'buildings', id));
-        addToast({ title: 'Deleted', description: 'Building removed successfully', variant: 'success' });
-      } catch (error) {
-        console.error('Error deleting building:', error);
-        addToast({ title: 'Error', description: 'Failed to delete building', variant: 'error' });
-      }
+  const handleDeleteBuilding = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this building?')) return;
+
+    try {
+      const { error } = await supabase.from('buildings').delete().eq('id', id);
+      if (error) throw error;
+      addToast({ title: 'Deleted', description: 'Building deleted successfully', variant: 'success' });
+    } catch (error) {
+      console.error('Error deleting building:', error);
+      addToast({ title: 'Error', description: 'Failed to delete building', variant: 'error' });
     }
   };
 
-  // Enhanced search with room matching
-  const getSearchResults = () => {
-    if (!searchQuery.trim()) return buildings;
-    
-    const query = searchQuery.toLowerCase();
-    return buildings.filter(building => {
-      if (building.name?.toLowerCase().includes(query)) return true;
-      if (building.rooms && Array.isArray(building.rooms)) {
-        return building.rooms.some(room => room.toLowerCase().includes(query));
-      }
-      return false;
-    });
+  // Normalize string for search (lowercase, remove spaces/dashes)
+  const normalizeForSearch = (str) => {
+    return (str || '').toLowerCase().replace(/[-\\s]/g, '');
   };
 
-  const filteredBuildings = getSearchResults();
-
-  const getMatchingRooms = (building) => {
-    if (!searchQuery.trim()) return [];
-    const query = searchQuery.toLowerCase();
-    return building.rooms?.filter(room => room.toLowerCase().includes(query)) || [];
-  };
+  const filteredBuildings = buildings.filter(building => {
+    if (!searchQuery.trim()) return true;
+    const query = normalizeForSearch(searchQuery);
+    if (normalizeForSearch(building.name).includes(query)) return true;
+    if (building.rooms && Array.isArray(building.rooms)) {
+      if (building.rooms.some(room => normalizeForSearch(room).includes(query))) return true;
+    }
+    if (building.facilities && Array.isArray(building.facilities)) {
+      if (building.facilities.some(facility => normalizeForSearch(facility).includes(query))) return true;
+    }
+    return false;
+  });
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -206,263 +216,254 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
               <Building2 className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">Buildings & Rooms</h2>
-              <p className="text-sm text-gray-500">{buildings.length} buildings total</p>
+              <h2 className="text-xl font-semibold text-gray-900">Building Manager</h2>
+              <p className="text-sm text-gray-500">
+                {buildings.length} building{buildings.length !== 1 ? 's' : ''} registered
+              </p>
             </div>
           </div>
-          <Button onClick={handleAddBuilding}>
-            <Plus className="w-5 h-5" />
-            Add Building
-          </Button>
+          
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search buildings or rooms..."
+                className="pl-10 w-72"
+              />
+            </div>
+            <Button onClick={handleAddBuilding}>
+              <Plus className="w-4 h-4" />
+              Add Building
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="px-6 py-4 bg-white border-b border-gray-100">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <Input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search buildings or rooms..."
-            className="pl-10 pr-10"
-          />
-          {searchQuery && (
-            <button 
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-        {searchQuery && (
-          <p className="text-sm text-gray-500 mt-2">
-            {filteredBuildings.length} result{filteredBuildings.length !== 1 ? 's' : ''} found
-          </p>
-        )}
-      </div>
-
-      {/* Buildings Grid */}
+      {/* Building Grid */}
       <div className="flex-1 overflow-auto p-6">
         {filteredBuildings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <Building2 className="w-10 h-10 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900">
-              {searchQuery ? 'No results found' : 'No buildings yet'}
-            </h3>
-            <p className="text-gray-500 mt-1">
-              {searchQuery ? 'Try a different search term' : 'Click "Add Building" to get started'}
-            </p>
+          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+            <Building2 className="w-16 h-16 mb-4 opacity-30" />
+            <p className="text-lg font-medium">No buildings found</p>
+            <p className="text-sm">Add a building using the Map Editor</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredBuildings.map(building => {
-              const matchingRooms = getMatchingRooms(building);
-              const isNameMatch = searchQuery && building.name?.toLowerCase().includes(searchQuery.toLowerCase());
-              
-              return (
-                <Card key={building.id} className="hover:shadow-lg transition-shadow overflow-hidden">
-                  {/* Building Image Preview */}
-                  {building.images && building.images.length > 0 && (
-                    <div className="h-32 w-full">
-                      <img 
-                        src={building.images[0]} 
-                        alt={building.name}
-                        className="w-full h-full object-cover"
-                      />
+            {filteredBuildings.map(building => (
+              <Card key={building.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                {/* Building Image Preview */}
+                {building.images && building.images.length > 0 ? (
+                  <div className="h-32 bg-gray-100 overflow-hidden">
+                    <img 
+                      src={building.images[0]} 
+                      alt={building.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-32 bg-gradient-to-br from-maroon-100 to-maroon-50 flex items-center justify-center">
+                    <Building2 className="w-12 h-12 text-maroon-300" />
+                  </div>
+                )}
+                
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <h3 className="font-semibold text-gray-900 line-clamp-1">{building.name}</h3>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => startEdit(building)}
+                        className="p-1.5 text-gray-400 hover:text-maroon-800 hover:bg-maroon-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteBuilding(building.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <p className="text-sm text-gray-500 line-clamp-2 mb-3">
+                    {building.description || 'No description'}
+                  </p>
+                  
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <DoorOpen className="w-4 h-4" />
+                    <span>{building.rooms?.length || 0} rooms</span>
+                    {building.images && building.images.length > 0 && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <Image className="w-4 h-4" />
+                        <span>{building.images.length} images</span>
+                      </>
+                    )}
+                  </div>
+                  
+                  {building.rooms && building.rooms.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {building.rooms.slice(0, 3).map((room, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{room}</Badge>
+                      ))}
+                      {building.rooms.length > 3 && (
+                        <Badge variant="outline" className="text-xs">+{building.rooms.length - 3}</Badge>
+                      )}
                     </div>
                   )}
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-maroon-100 rounded-lg flex items-center justify-center">
-                          {building.images && building.images.length > 0 ? (
-                            <Image className="w-5 h-5 text-maroon-800" />
-                          ) : (
-                            <Building2 className="w-5 h-5 text-maroon-800" />
-                          )}
-                        </div>
-                        <h3 className={cn(
-                          "font-semibold text-gray-900",
-                          isNameMatch && "bg-yellow-100 px-1"
-                        )}>
-                          {building.name}
-                        </h3>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={() => startEdit(building)}
-                          className="p-2 text-gray-400 hover:text-maroon-800 hover:bg-gray-100 rounded-lg transition-colors"
-                          title="Edit building"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(building.id, building.name)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete building"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {building.description && (
-                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">{building.description}</p>
-                    )}
-                    
-                    {building.rooms && building.rooms.length > 0 && (
-                      <div className="pt-3 border-t border-gray-100">
-                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                          <DoorOpen className="w-4 h-4" />
-                          <span>{building.rooms.length} room{building.rooms.length !== 1 ? 's' : ''}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {building.rooms.slice(0, 6).map((room, idx) => (
-                            <Badge 
-                              key={idx} 
-                              variant={matchingRooms.includes(room) ? 'gold' : 'secondary'}
-                              className="text-xs"
-                            >
-                              {room}
-                            </Badge>
-                          ))}
-                          {building.rooms.length > 6 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{building.rooms.length - 6} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
       </div>
 
       {/* Edit Building Modal */}
-      <Modal open={!!editingBuilding} onClose={() => setEditingBuilding(null)}>
-        <ModalHeader onClose={() => setEditingBuilding(null)}>
+      <Modal open={!!editingBuilding} onOpenChange={(open) => !open && setEditingBuilding(null)}>
+        <ModalHeader>
           <ModalTitle>Edit Building</ModalTitle>
         </ModalHeader>
-        {editingBuilding && (
-          <>
-            <ModalBody className="space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Building Name *</label>
+        <ModalBody className="max-h-[70vh] overflow-y-auto">
+          {editingBuilding && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Building Name *</label>
                 <Input
                   value={editingBuilding.name}
-                  onChange={(e) => setEditingBuilding({...editingBuilding, name: e.target.value})}
+                  onChange={(e) => setEditingBuilding({ ...editingBuilding, name: e.target.value })}
+                  placeholder="Building name"
                 />
               </div>
               
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Description</label>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Description</label>
                 <Textarea
                   value={editingBuilding.description}
-                  onChange={(e) => setEditingBuilding({...editingBuilding, description: e.target.value})}
+                  onChange={(e) => setEditingBuilding({ ...editingBuilding, description: e.target.value })}
+                  placeholder="Brief description..."
                   rows={3}
                 />
               </div>
 
-              {/* Image Upload Section */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Building Image</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImageUpload}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <Button 
-                    variant="secondary" 
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingImage}
-                  >
-                    {uploadingImage ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-4 h-4" />
-                        Upload Image
-                      </>
-                    )}
-                  </Button>
-                  <span className="text-xs text-gray-500">Max 5MB, JPG/PNG</span>
-                </div>
-                
-                {/* Image Preview */}
-                {editingBuilding.images?.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    {editingBuilding.images.map((url, index) => (
-                      <div key={index} className="relative group">
-                        <img 
-                          src={url} 
-                          alt={`Building ${index + 1}`}
-                          className="w-full h-20 object-cover rounded-lg border border-gray-200"
-                        />
-                        <button
-                          onClick={() => handleRemoveImage(index)}
-                          className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Rooms</label>
-                <div className="flex gap-2">
+              {/* Rooms Section */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Rooms ({editingBuilding.rooms.length})
+                </label>
+                <div className="flex gap-2 mb-2">
                   <Input
                     value={editRoom}
                     onChange={(e) => setEditRoom(e.target.value)}
-                    placeholder="Add a room"
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddEditRoom())}
+                    placeholder="Add rooms (comma-separated, e.g., 101, 102, 103)"
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddEditRoom()}
                     className="flex-1"
                   />
-                  <Button variant="secondary" onClick={handleAddEditRoom}>
+                  <Button onClick={handleAddEditRoom} variant="secondary">
                     <Plus className="w-4 h-4" />
-                    Add
                   </Button>
                 </div>
-                {editingBuilding.rooms?.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {editingBuilding.rooms.map((room, index) => (
-                      <Badge key={index} variant="secondary" className="pr-1 gap-1">
-                        {room}
-                        <button 
-                          onClick={() => handleRemoveEditRoom(index)}
-                          className="ml-1 p-0.5 hover:bg-gray-300 rounded"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {editingBuilding.rooms.map((room, index) => (
+                    <Badge key={index} variant="secondary" className="pr-1">
+                      {room}
+                      <button
+                        onClick={() => handleRemoveEditRoom(index)}
+                        className="ml-1 p-0.5 hover:bg-gray-300 rounded-full"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            </ModalBody>
-            <ModalFooter>
-              <Button variant="outline" onClick={() => setEditingBuilding(null)}>Cancel</Button>
-              <Button onClick={handleSaveEdit}>Save Changes</Button>
-            </ModalFooter>
-          </>
-        )}
+
+              {/* Facilities Section */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Facilities ({editingBuilding.facilities?.length || 0})
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    value={editFacility}
+                    onChange={(e) => setEditFacility(e.target.value)}
+                    placeholder="Add facilities (comma-separated, e.g., Library, Gym)"
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddEditFacility()}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAddEditFacility} variant="secondary">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {editingBuilding.facilities?.map((facility, index) => (
+                    <Badge key={index} variant="outline" className="pr-1 bg-green-50 text-green-700 border-green-200">
+                      {facility}
+                      <button
+                        onClick={() => handleRemoveEditFacility(index)}
+                        className="ml-1 p-0.5 hover:bg-green-200 rounded-full"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Images Section */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Building Images ({editingBuilding.images?.length || 0})
+                </label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {editingBuilding.images?.map((url, index) => (
+                    <div key={index} className="relative group aspect-square">
+                      <img
+                        src={url}
+                        alt={`Building ${index + 1}`}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage}
+                  className="w-full"
+                >
+                  {uploadingImage ? (
+                    <>Uploading...</>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      Upload Image
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setEditingBuilding(null)}>Cancel</Button>
+          <Button onClick={handleSaveEdit}>Save Changes</Button>
+        </ModalFooter>
       </Modal>
     </div>
   );

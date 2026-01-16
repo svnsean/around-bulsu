@@ -10,9 +10,25 @@ import {
   Linking,
   RefreshControl,
 } from 'react-native';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import { Card, CardContent, Badge, Icon, IconCircle } from '../components/ui';
+import { Ionicons, Feather } from '@expo/vector-icons';
+import { Icon } from '../components/ui';
+import { supabase, subscribeToTable } from '../supabase';
+
+// Icon with circle background component
+const IconCircle = ({ name, size, color, bgColor, circleSize }) => (
+  <View 
+    style={{ 
+      width: circleSize, 
+      height: circleSize, 
+      borderRadius: circleSize / 2, 
+      backgroundColor: bgColor,
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}
+  >
+    <Feather name={name} size={size} color={color} />
+  </View>
+);
 
 const TABS = ['Contacts', 'Buildings', 'Announcements'];
 
@@ -23,30 +39,18 @@ const InfoScreen = ({ navigation }) => {
   const [announcements, setAnnouncements] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Firebase listeners
+  // Supabase listeners
   useEffect(() => {
-    const unsubContacts = onSnapshot(collection(db, 'emergencyContacts'), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (a.order || 0) - (b.order || 0));
-      setContacts(data);
+    const unsubContacts = subscribeToTable('emergency_contacts', (data) => {
+      setContacts(data.sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
-
-    const unsubBuildings = onSnapshot(collection(db, 'buildings'), (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-      setBuildings(data);
-    });
-
-    const unsubAnnouncements = onSnapshot(collection(db, 'announcements'), (snap) => {
-      const data = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(a => a.active !== false);
-      data.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(0);
-        const dateB = b.createdAt?.toDate?.() || new Date(0);
-        return dateB - dateA;
-      });
-      setAnnouncements(data);
+    const unsubBuildings = subscribeToTable('buildings', setBuildings);
+    const unsubAnnouncements = subscribeToTable('announcements', (data) => {
+      setAnnouncements(
+        data.filter(a => a.active).sort((a, b) => 
+          new Date(b.created_at) - new Date(a.created_at)
+        )
+      );
     });
 
     return () => {
@@ -173,9 +177,9 @@ const InfoScreen = ({ navigation }) => {
               </Text>
             )}
           </View>
-          <Text className="text-2xl text-gray-300 pr-4">
+          <View className="pr-4">
             <Icon name="chevron-right" size={20} color="#D1D5DB" />
-          </Text>
+          </View>
         </TouchableOpacity>
       )}
     />
