@@ -34,6 +34,33 @@ const BuildingInfoScreen = ({ route, navigation }) => {
   const cameraRef = React.useRef(null);
   const scrollViewRef = React.useRef(null);
 
+  // Helper: Point in polygon check
+  const isPointInPolygon = (x, y, polygon) => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].lng, yi = polygon[i].lat;
+      const xj = polygon[j].lng, yj = polygon[j].lat;
+      const intersect = ((yi > y) !== (yj > y)) &&
+                        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+
+  // Helper: Calculate distance in meters
+  const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3;
+    const p1 = lat1 * Math.PI / 180;
+    const p2 = lat2 * Math.PI / 180;
+    const dp = (lat2 - lat1) * Math.PI / 180;
+    const dl = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dp/2) * Math.sin(dp/2) +
+              Math.cos(p1) * Math.cos(p2) *
+              Math.sin(dl/2) * Math.sin(dl/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
   // Scroll to top on mount
   useEffect(() => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
@@ -316,38 +343,11 @@ const BuildingInfoScreen = ({ route, navigation }) => {
     }
   };
 
-  // Helper: Point in polygon check
-  const isPointInPolygon = (x, y, polygon) => {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i].lng, yi = polygon[i].lat;
-      const xj = polygon[j].lng, yj = polygon[j].lat;
-      const intersect = ((yi > y) !== (yj > y)) &&
-                        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
-
-  // Helper: Calculate distance in meters
-  const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3;
-    const p1 = lat1 * Math.PI / 180;
-    const p2 = lat2 * Math.PI / 180;
-    const dp = (lat2 - lat1) * Math.PI / 180;
-    const dl = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dp/2) * Math.sin(dp/2) +
-              Math.cos(p1) * Math.cos(p2) *
-              Math.sin(dl/2) * Math.sin(dl/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
   // Start AR Navigation
   const handleStartNavigation = () => {
     navigation.navigate('ARNavigation', {
       building,
-      userCoords,
+      userLocation: userCoords,
       nodes,
       edges,
       blockages,

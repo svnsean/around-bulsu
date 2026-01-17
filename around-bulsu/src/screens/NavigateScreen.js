@@ -76,11 +76,13 @@ const NavigateScreen = ({ navigation }) => {
     });
     const unsubNodes = subscribeToTable('nodes', setNodes);
     const unsubEdges = subscribeToTable('edges', setEdges);
+    const unsubBlockages = subscribeToTable('blockages', setBlockages);
 
     return () => {
       unsubBuildings();
       unsubNodes();
       unsubEdges();
+      unsubBlockages();
     };
   }, []);
 
@@ -114,9 +116,12 @@ const NavigateScreen = ({ navigation }) => {
   // Handle search result selection
   const handleSearchSelect = (building) => {
     bottomSheetRef.current?.close();
+    const userCoords = userLocation
+      ? [userLocation.longitude, userLocation.latitude]
+      : null;
     navigation.navigate('BuildingInfo', { 
       building,
-      userLocation,
+      userLocation: userCoords,
       nodes,
       edges,
       blockages

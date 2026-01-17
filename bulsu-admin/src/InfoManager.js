@@ -124,7 +124,7 @@ const InfoManager = () => {
     }
     setUploading(true);
     try {
-      const url = await uploadImage(file, 'announcements');
+      const url = await uploadImage('announcements', file);
       setAnnouncementForm({ ...announcementForm, image_url: url });
       addToast({ title: 'Uploaded', description: 'Image uploaded', variant: 'success' });
     } catch (error) {

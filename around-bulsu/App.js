@@ -145,7 +145,6 @@ function MainTabs() {
         tabBarActiveTintColor: '#FFFFFF',
         tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.5)',
         tabBarLabelStyle: styles.tabBarLabel,
-        tabBarIconStyle: styles.tabBarIcon,
       }}
     >
       <Tab.Screen 
@@ -155,9 +154,7 @@ function MainTabs() {
           tabBarLabel: 'Navigate',
           tabBarStyle: getTabBarStyle(route),
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.tabIcon, focused && styles.tabIconActive]}>
-              <Icon name="compass" size={22} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-            </View>
+            <Icon name="compass" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
           ),
         })}
       />
@@ -168,9 +165,7 @@ function MainTabs() {
           tabBarLabel: 'Emergency',
           tabBarStyle: getTabBarStyle(route),
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.tabIcon, focused && styles.tabIconActive]}>
-              <Icon name="alert" size={22} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-            </View>
+            <Icon name="alert" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
           ),
         })}
       />
@@ -180,9 +175,7 @@ function MainTabs() {
         options={{
           tabBarLabel: 'Info',
           tabBarIcon: ({ focused }) => (
-            <View style={[styles.tabIcon, focused && styles.tabIconActive]}>
-              <Icon name="info" size={22} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-            </View>
+            <Icon name="info" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
           ),
         }}
       />
@@ -246,20 +239,6 @@ const styles = StyleSheet.create({
   tabBarLabel: {
     fontSize: 11,
     fontWeight: '600',
-    marginTop: 4,
-  },
-  tabBarIcon: {
-    marginTop: 0,
-  },
-  tabIcon: {
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 10,
-  },
-  tabIconActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   drawerLabel: {
     fontSize: 16,

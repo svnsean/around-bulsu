@@ -427,17 +427,19 @@ const EmergencyScreen = ({ navigation }) => {
         })}
       </MapboxGL.MapView>
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
-          <Text style={styles.legendText}>Safe Zones</Text>
+      {/* Legend - only show when inside campus */}
+      {!isOutsideCampus && (
+        <View style={styles.legend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, { backgroundColor: '#22c55e' }]} />
+            <Text style={styles.legendText}>Safe Zones</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, { backgroundColor: '#ef4444' }]} />
+            <Text style={styles.legendText}>Blocked Areas</Text>
+          </View>
         </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#ef4444' }]} />
-          <Text style={styles.legendText}>Blocked Areas</Text>
-        </View>
-      </View>
+      )}
 
       {/* Outside Campus Warning */}
       {isOutsideCampus && (

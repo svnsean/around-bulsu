@@ -44,7 +44,9 @@ const InfoScreen = ({ navigation }) => {
     const unsubContacts = subscribeToTable('emergency_contacts', (data) => {
       setContacts(data.sort((a, b) => (a.order || 0) - (b.order || 0)));
     });
-    const unsubBuildings = subscribeToTable('buildings', setBuildings);
+    const unsubBuildings = subscribeToTable('buildings', (data) => {
+      setBuildings(data.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    });
     const unsubAnnouncements = subscribeToTable('announcements', (data) => {
       setAnnouncements(
         data.filter(a => a.active).sort((a, b) => 
@@ -100,8 +102,8 @@ const InfoScreen = ({ navigation }) => {
         </View>
       ) : (
         Object.entries(groupedContacts).map(([category, categoryContacts]) => (
-          <View key={category} className="mb-6">
-            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 px-1">
+          <View key={category} className="mb-3">
+            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-1">
               {category}
             </Text>
             {categoryContacts.map(contact => (
@@ -216,7 +218,7 @@ const InfoScreen = ({ navigation }) => {
               {item.body}
             </Text>
             <Text className="text-xs text-gray-400">
-              {formatDate(item.createdAt)}
+              Posted {formatDate(item.created_at)}
             </Text>
           </View>
         </View>

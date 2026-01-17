@@ -15,8 +15,9 @@ import { Icon } from './ui';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TAB_BAR_HEIGHT = 102; // Floating tab bar height (70) + margin (16) + extra padding (16)
+const MENU_BUTTON_HEIGHT = 70; // Space for menu button at top
 const SHEET_MIN_HEIGHT = 100 + TAB_BAR_HEIGHT;
-const SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
+const SHEET_MAX_HEIGHT = SCREEN_HEIGHT - MENU_BUTTON_HEIGHT; // Go nearly full height but leave room for menu button
 
 const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -127,12 +128,12 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
               <Text className="text-xs text-maroon-700 font-semibold mb-1">Matching rooms:</Text>
               <View className="flex-row flex-wrap">
                 {matchingRooms.slice(0, 3).map((room, idx) => (
-                  <Text 
+                  <View 
                     key={idx} 
-                    className="text-xs text-maroon-800 bg-maroon-100 px-2.5 py-1 rounded-full mr-1.5 mb-1 font-medium"
+                    className="bg-maroon-100 px-2 py-0.5 rounded-full mr-1.5 mb-1"
                   >
-                    {room}
-                  </Text>
+                    <Text className="text-xs text-maroon-800 font-medium">{room}</Text>
+                  </View>
                 ))}
                 {matchingRooms.length > 3 && (
                   <Text className="text-xs text-gray-400 italic self-center">

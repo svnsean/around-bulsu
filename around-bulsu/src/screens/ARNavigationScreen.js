@@ -10,8 +10,8 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -278,7 +278,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
     
     const startTracking = async () => {
       locSub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 1, timeInterval: 500 },
+        { accuracy: Location.Accuracy.High, distanceInterval: 2, timeInterval: 1000 },
         (loc) => {
           if (!isMountedRef.current) return;
           
@@ -307,7 +307,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
         }
       );
       
-      Magnetometer.setUpdateInterval(50);
+      Magnetometer.setUpdateInterval(100);
       magSub = Magnetometer.addListener((data) => {
         if (!isMountedRef.current) return;
         let rawAngle = Math.atan2(data.y, data.x) * (180 / Math.PI);
@@ -316,7 +316,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
         setHeading(smoothedHeading);
       });
       
-      Accelerometer.setUpdateInterval(100);
+      Accelerometer.setUpdateInterval(150);
       accelSub = Accelerometer.addListener((data) => {
         if (!isMountedRef.current) return;
         const rawPitch = Math.atan2(-data.x, Math.sqrt(data.y ** 2 + data.z ** 2)) * (180 / Math.PI);
@@ -336,7 +336,31 @@ const ARNavigationScreen = ({ route, navigation }) => {
   }, []);
 
   const calculatePath = useCallback(() => {
-    if (!nodes || !edges || nodes.length === 0 || !initialLocation || !building) return;
+    // Validate all required data
+    if (!nodes || !edges || nodes.length === 0 || !building) {
+      console.log('[PathCalc] Missing required data:', { nodes: !!nodes, edges: !!edges, nodesLen: nodes?.length, building: !!building });
+      return;
+    }
+    
+    // Normalize initialLocation to array format [lng, lat]
+    let startLocation = initialLocation;
+    if (!startLocation) {
+      console.log('[PathCalc] No initial location provided');
+      return;
+    }
+    
+    // Handle object format { longitude, latitude }
+    if (!Array.isArray(startLocation) && startLocation.longitude !== undefined) {
+      startLocation = [startLocation.longitude, startLocation.latitude];
+    }
+    
+    if (!Array.isArray(startLocation) || startLocation.length !== 2) {
+      console.log('[PathCalc] Invalid location format:', startLocation);
+      return;
+    }
+    
+    console.log('[PathCalc] Calculating path with', nodes.length, 'nodes and', edges.length, 'edges');
+    console.log('[PathCalc] From:', startLocation, 'To:', [building.longitude, building.latitude]);
     
     // Create nodes map for edge blocking check
     const nodesMap = {};
@@ -359,13 +383,18 @@ const ARNavigationScreen = ({ route, navigation }) => {
     
     let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
     nodes.forEach(n => {
-      const dUser = getDistance(initialLocation[1], initialLocation[0], n.lat, n.lng);
+      const dUser = getDistance(startLocation[1], startLocation[0], n.lat, n.lng);
       const dDest = getDistance(building.latitude, building.longitude, n.lat, n.lng);
       if (dUser < minStart) { minStart = dUser; startNode = n; }
       if (dDest < minEnd) { minEnd = dDest; endNode = n; }
     });
     
-    if (!startNode || !endNode) return;
+    if (!startNode || !endNode) {
+      console.log('[PathCalc] Could not find start/end nodes');
+      return;
+    }
+    
+    console.log('[PathCalc] Start node:', startNode.id, 'End node:', endNode.id);
     
     const openSet = new Set([startNode.id]);
     const closedSet = new Set();
@@ -395,6 +424,8 @@ const ARNavigationScreen = ({ route, navigation }) => {
           curr = cameFrom.get(curr); 
         }
         path.push([building.longitude, building.latitude]);
+        
+        console.log('[PathCalc] Path found with', path.length, 'points');
         
         setNavigationPath({ 
           type: 'FeatureCollection', 
@@ -634,17 +665,8 @@ const ARNavigationScreen = ({ route, navigation }) => {
 
       </SafeAreaView>
 
-      {/* Top Left: Distance HUD */}
+      {/* Top Left: Compass HUD */}
       <View style={styles.topLeftHUD}>
-        <View style={styles.hudPanel}>
-          <MaterialCommunityIcons name="map-marker-distance" size={20} color="#00E5FF" />
-          <Text style={styles.hudValue}>{currentDistance || '--'}</Text>
-          <Text style={styles.hudUnit}>m</Text>
-        </View>
-      </View>
-
-      {/* Top Right: Compass HUD */}
-      <View style={styles.topRightHUD}>
         <View style={styles.compassPanel}>
           <Text style={styles.compassDirection}>
             {heading < 45 || heading >= 315 ? 'N' : 
@@ -655,7 +677,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
         </View>
       </View>
 
-      {/* Stop Button */}
+      {/* Top Right: Stop Button */}
       <TouchableOpacity style={styles.stopButton} onPress={() => navigation.goBack()}>
         <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
         <Text style={styles.stopButtonText}>Stop</Text>
@@ -689,7 +711,8 @@ const ARNavigationScreen = ({ route, navigation }) => {
             centerCoordinate={userLocation} 
             heading={heading} 
             pitch={45} 
-            animationDuration={300} 
+            animationDuration={500} 
+            animationMode="flyTo"
           />
           <MapboxGL.UserLocation visible={true} />
           {navigationPath && (
@@ -844,39 +867,11 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   
-  // Top Left HUD
+  // Top Left HUD (Compass)
   topLeftHUD: {
     position: 'absolute',
     top: 50,
     left: 16,
-  },
-  hudPanel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.2)',
-  },
-  hudValue: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  hudUnit: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 14,
-    marginLeft: 2,
-  },
-  
-  // Top Right HUD (Compass)
-  topRightHUD: {
-    position: 'absolute',
-    top: 50,
-    right: 16,
   },
   compassPanel: {
     alignItems: 'center',
@@ -901,8 +896,7 @@ const styles = StyleSheet.create({
   stopButton: {
     position: 'absolute',
     top: 50,
-    left: '50%',
-    marginLeft: -45,
+    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(220, 53, 69, 0.9)',

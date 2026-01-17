@@ -84,7 +84,7 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
 
     setUploadingImage(true);
     try {
-      const downloadURL = await uploadImage(file, `buildings/${editingBuilding.id}`);
+      const downloadURL = await uploadImage(`buildings/${editingBuilding.id}`, file);
       
       setEditingBuilding({
         ...editingBuilding,
@@ -158,9 +158,7 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
           name: editingBuilding.name.trim(),
           description: editingBuilding.description.trim(),
           rooms: editingBuilding.rooms.map(r => r.trim()).filter(r => r).sort((a, b) => a.localeCompare(b)),
-          facilities: editingBuilding.facilities.map(f => f.trim()).filter(f => f).sort((a, b) => a.localeCompare(b)),
-          images: editingBuilding.images || [],
-          updated_at: new Date().toISOString()
+          images: editingBuilding.images || []
         })
         .eq('id', editingBuilding.id);
 
