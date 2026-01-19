@@ -13,6 +13,14 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, subscribeToTable } from '../supabase';
 
+// Import shared pathfinding utilities
+import {
+  findPath,
+  getDistance,
+  isPointInPolygon,
+  isEdgeBlocked
+} from '../lib/pathfinding';
+
 MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
 
 const CAMPUS_BOUNDS = {
@@ -22,15 +30,7 @@ const CAMPUS_BOUNDS = {
   west: 120.8050
 };
 
-const getDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371e3;
-  const p1 = lat1 * Math.PI / 180;
-  const p2 = lat2 * Math.PI / 180;
-  const dp = (lat2 - lat1) * Math.PI / 180;
-  const dl = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
+// getDistance is now imported from pathfinding.js
 
 const EmergencyScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
@@ -213,21 +213,12 @@ const EmergencyScreen = ({ navigation }) => {
       }))
   });
 
-  const isEdgeBlocked = (edge) => {
+  // Check if an edge is blocked using the shared utility
+  const checkEdgeBlocked = (edge) => {
     const activeBlockages = blockages.filter(b => b.active);
-    if (activeBlockages.length === 0) return false;
-
-    const fromNode = nodes.find(n => n.id === edge.from);
-    const toNode = nodes.find(n => n.id === edge.to);
-    if (!fromNode || !toNode) return false;
-
-    const midLng = (fromNode.lng + toNode.lng) / 2;
-    const midLat = (fromNode.lat + toNode.lat) / 2;
-
-    return activeBlockages.some(blockage => {
-      if (!blockage.points || blockage.points.length < 3) return false;
-      return isPointInPolygon(midLng, midLat, blockage.points);
-    });
+    const nodesMap = {};
+    nodes.forEach(n => { nodesMap[n.id] = n; });
+    return isEdgeBlocked(edge, activeBlockages, nodesMap);
   };
 
   const handleActivateEvacuation = () => {
@@ -249,7 +240,7 @@ const EmergencyScreen = ({ navigation }) => {
         { 
           text: 'Start Navigation',
           onPress: () => {
-            const validEdges = edges.filter(e => !isEdgeBlocked(e));
+            const validEdges = edges.filter(e => !checkEdgeBlocked(e));
             
             // Launch AR Navigation
             navigation.navigate('ARNavigation', {
@@ -270,83 +261,26 @@ const EmergencyScreen = ({ navigation }) => {
     );
   };
 
-  // Calculate evacuation path using A*
-  const calculateEvacuationPath = (validEdges) => {
+  // Calculate evacuation path using the shared pathfinding utility
+  const calculateEvacuationPath = () => {
     if (!userLocation || !nodes || nodes.length === 0 || !nearestZone) return [];
     
     try {
-      const graph = new Map();
-      nodes.forEach(n => graph.set(n.id, { ...n, neighbors: [] }));
-      validEdges.forEach(e => {
-        if (graph.has(e.from) && graph.has(e.to)) {
-          graph.get(e.from).neighbors.push({ node: e.to, cost: e.weight || 1 });
-          graph.get(e.to).neighbors.push({ node: e.from, cost: e.weight || 1 });
-        }
+      const result = findPath({
+        startCoords: userLocation,
+        endCoords: [nearestZone.centerLng, nearestZone.centerLat],
+        nodes,
+        edges,
+        blockages,
+        includeEndpoints: false
       });
-
-      // Find nearest nodes
-      let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
-      const getD = (lat1, lon1, lat2, lon2) => {
-        const R = 6371e3;
-        const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
-        const dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      };
       
-      nodes.forEach(n => {
-        const dUser = getD(userLocation[1], userLocation[0], n.lat, n.lng);
-        const dDest = getD(nearestZone.centerLat, nearestZone.centerLng, n.lat, n.lng);
-        if (dUser < minStart) { minStart = dUser; startNode = n; }
-        if (dDest < minEnd) { minEnd = dDest; endNode = n; }
-      });
-
-      if (!startNode || !endNode) return [];
-
-      // A* pathfinding
-      const openSet = new Set([startNode.id]);
-      const closedSet = new Set();
-      const cameFrom = new Map();
-      const gScore = new Map(), fScore = new Map();
-      nodes.forEach(n => { gScore.set(n.id, Infinity); fScore.set(n.id, Infinity); });
-      gScore.set(startNode.id, 0);
-      fScore.set(startNode.id, getD(startNode.lat, startNode.lng, endNode.lat, endNode.lng));
-
-      while (openSet.size > 0) {
-        let current = null, lowest = Infinity;
-        for (const id of openSet) {
-          if (fScore.get(id) < lowest) { lowest = fScore.get(id); current = id; }
-        }
-        
-        if (current === endNode.id) {
-          const path = [];
-          let c = current;
-          while (c) {
-            const node = graph.get(c);
-            path.unshift({ lat: node.lat, lng: node.lng });
-            c = cameFrom.get(c);
-          }
-          return path;
-        }
-        
-        openSet.delete(current);
-        closedSet.add(current);
-        
-        const currentNode = graph.get(current);
-        if (!currentNode) continue;
-        
-        for (const neighbor of currentNode.neighbors) {
-          if (closedSet.has(neighbor.node)) continue;
-          const tentativeG = gScore.get(current) + neighbor.cost;
-          if (!openSet.has(neighbor.node)) openSet.add(neighbor.node);
-          else if (tentativeG >= gScore.get(neighbor.node)) continue;
-          cameFrom.set(neighbor.node, current);
-          gScore.set(neighbor.node, tentativeG);
-          const neighborNode = graph.get(neighbor.node);
-          fScore.set(neighbor.node, tentativeG + getD(neighborNode.lat, neighborNode.lng, endNode.lat, endNode.lng));
-        }
+      if (result.error || result.path.length === 0) {
+        return [];
       }
-      return [];
+      
+      // Convert path coordinates to {lat, lng} format
+      return result.path.map(([lng, lat]) => ({ lat, lng }));
     } catch (error) {
       console.error('Error calculating evacuation path:', error);
       return [];

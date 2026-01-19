@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import { Card, Icon } from '../components/ui';
+import { findPath, pathToGeoJSON, getPathBounds, getDistance } from '../lib/pathfinding';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -34,33 +35,6 @@ const BuildingInfoScreen = ({ route, navigation }) => {
   const cameraRef = React.useRef(null);
   const scrollViewRef = React.useRef(null);
 
-  // Helper: Point in polygon check
-  const isPointInPolygon = (x, y, polygon) => {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-      const xi = polygon[i].lng, yi = polygon[i].lat;
-      const xj = polygon[j].lng, yj = polygon[j].lat;
-      const intersect = ((yi > y) !== (yj > y)) &&
-                        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
-
-  // Helper: Calculate distance in meters
-  const getDistanceMeters = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3;
-    const p1 = lat1 * Math.PI / 180;
-    const p2 = lat2 * Math.PI / 180;
-    const dp = (lat2 - lat1) * Math.PI / 180;
-    const dl = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(dp/2) * Math.sin(dp/2) +
-              Math.cos(p1) * Math.cos(p2) *
-              Math.sin(dl/2) * Math.sin(dl/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c;
-  };
-
   // Scroll to top on mount
   useEffect(() => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
@@ -77,269 +51,66 @@ const BuildingInfoScreen = ({ route, navigation }) => {
   // Calculate distance from user to building
   const calculateDistance = () => {
     if (!userCoords) return;
-
-    const R = 6371e3; // Earth radius in meters
-    const φ1 = userCoords[1] * Math.PI / 180;
-    const φ2 = building.latitude * Math.PI / 180;
-    const Δφ = (building.latitude - userCoords[1]) * Math.PI / 180;
-    const Δλ = (building.longitude - userCoords[0]) * Math.PI / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    const meters = R * c;
+    const meters = getDistance(userCoords[1], userCoords[0], building.latitude, building.longitude);
     setDistance(Math.round(meters));
   };
 
-  // Generate path preview with full A* and calculate bounds
+  // Generate path preview using the shared pathfinding utility
   const generatePathPreview = () => {
     if (!userCoords || !nodes || !edges || nodes.length === 0) {
+      console.log('[BuildingInfo] Cannot generate path preview - missing data:', {
+        hasUserCoords: !!userCoords,
+        nodesCount: nodes?.length || 0,
+        edgesCount: edges?.length || 0
+      });
       return;
     }
 
     setLoading(true);
+    
+    console.log('[BuildingInfo] Generating path preview:', {
+      from: userCoords,
+      to: [building.longitude, building.latitude],
+      nodes: nodes.length,
+      edges: edges.length,
+      blockages: blockages?.length || 0
+    });
 
     try {
-      // Build graph
-      const graph = new Map();
-      nodes.forEach(n => graph.set(n.id, { ...n, neighbors: [] }));
-      
-      const nodesMap = {};
-      nodes.forEach(n => { nodesMap[n.id] = n; });
-      
-      const activeBlockages = (blockages || []).filter(b => b.active);
-      
-      edges.forEach(e => {
-        if (graph.has(e.from) && graph.has(e.to)) {
-          const fromNode = nodesMap[e.from];
-          const toNode = nodesMap[e.to];
-          if (fromNode && toNode) {
-            const midLng = (fromNode.lng + toNode.lng) / 2;
-            const midLat = (fromNode.lat + toNode.lat) / 2;
-            const isBlocked = activeBlockages.some(blockage => {
-              if (!blockage.points || blockage.points.length < 3) return false;
-              return isPointInPolygon(midLng, midLat, blockage.points);
-            });
-            if (isBlocked) return;
-          }
-          graph.get(e.from).neighbors.push({ node: e.to, cost: e.weight || 1 });
-          graph.get(e.to).neighbors.push({ node: e.from, cost: e.weight || 1 });
-        }
+      // Use the shared pathfinding utility
+      const result = findPath({
+        startCoords: userCoords,
+        endCoords: [building.longitude, building.latitude],
+        nodes,
+        edges,
+        blockages,
+        includeEndpoints: true
       });
 
-      // Find nearest nodes
-      let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
-      nodes.forEach(n => {
-        const dUser = getDistanceMeters(userCoords[1], userCoords[0], n.lat, n.lng);
-        const dDest = getDistanceMeters(building.latitude, building.longitude, n.lat, n.lng);
-        if (dUser < minStart) { minStart = dUser; startNode = n; }
-        if (dDest < minEnd) { minEnd = dDest; endNode = n; }
-      });
-
-      if (!startNode || !endNode) {
-        setLoading(false);
-        return;
-      }
-
-      // A* pathfinding
-      const openSet = new Set([startNode.id]);
-      const closedSet = new Set();
-      const cameFrom = new Map();
-      const gScore = new Map(), fScore = new Map();
-      nodes.forEach(n => { gScore.set(n.id, Infinity); fScore.set(n.id, Infinity); });
-      gScore.set(startNode.id, 0);
-      fScore.set(startNode.id, getDistanceMeters(startNode.lat, startNode.lng, endNode.lat, endNode.lng));
-
-      let pathCoordinates = [];
-
-      while (openSet.size > 0) {
-        let current = null, lowest = Infinity;
-        for (const id of openSet) {
-          if (fScore.get(id) < lowest) { lowest = fScore.get(id); current = id; }
-        }
-        
-        if (current === endNode.id) {
-          // Reconstruct path
-          let c = current;
-          while (c) {
-            const node = graph.get(c);
-            pathCoordinates.unshift([node.lng, node.lat]);
-            c = cameFrom.get(c);
-          }
-          break;
-        }
-        
-        openSet.delete(current);
-        closedSet.add(current);
-        
-        const currentNode = graph.get(current);
-        if (!currentNode) continue;
-        
-        for (const neighbor of currentNode.neighbors) {
-          if (closedSet.has(neighbor.node)) continue;
-          const tentativeG = gScore.get(current) + neighbor.cost;
-          if (!openSet.has(neighbor.node)) openSet.add(neighbor.node);
-          else if (tentativeG >= gScore.get(neighbor.node)) continue;
-          cameFrom.set(neighbor.node, current);
-          gScore.set(neighbor.node, tentativeG);
-          const neighborNode = graph.get(neighbor.node);
-          fScore.set(neighbor.node, tentativeG + getDistanceMeters(neighborNode.lat, neighborNode.lng, endNode.lat, endNode.lng));
-        }
-      }
-
-      // Add user location and building as start/end
-      if (pathCoordinates.length > 0) {
-        pathCoordinates.unshift(userCoords);
-        pathCoordinates.push([building.longitude, building.latitude]);
+      if (result.error) {
+        console.warn('Pathfinding warning:', result.error);
+        console.log('[BuildingInfo] Start node found:', result.startNode?.id);
+        console.log('[BuildingInfo] End node found:', result.endNode?.id);
+        // Fallback to direct line if no path found
+        const fallbackPath = [userCoords, [building.longitude, building.latitude]];
+        setPathPreview(pathToGeoJSON(fallbackPath));
+        setMapBounds(getPathBounds(fallbackPath));
+        setCalculatedPath(fallbackPath.map(([lng, lat]) => ({ lat, lng })));
       } else {
-        // Fallback: direct line if no path found
-        pathCoordinates = [
-          userCoords,
-          [building.longitude, building.latitude]
-        ];
+        console.log('[BuildingInfo] Path found with', result.path.length, 'points, distance:', result.distance, 'm');
+        setPathPreview(pathToGeoJSON(result.path));
+        setMapBounds(getPathBounds(result.path));
+        // Store path nodes for AR navigation
+        setCalculatedPath(result.path.map(([lng, lat]) => ({ lat, lng })));
+        // Update distance with actual path distance
+        if (result.distance > 0) {
+          setDistance(result.distance);
+        }
       }
-
-      const previewPath = {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: pathCoordinates
-          }
-        }]
-      };
-
-      setPathPreview(previewPath);
-
-      // Calculate bounds for the entire path with padding
-      let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
-      pathCoordinates.forEach(([lng, lat]) => {
-        minLng = Math.min(minLng, lng);
-        maxLng = Math.max(maxLng, lng);
-        minLat = Math.min(minLat, lat);
-        maxLat = Math.max(maxLat, lat);
-      });
-
-      // Add padding to bounds (approximately 50 meters in degrees)
-      const padding = 0.0005;
-      setMapBounds({
-        ne: [maxLng + padding, maxLat + padding],
-        sw: [minLng - padding, minLat - padding]
-      });
-
-      // Store path nodes for AR
-      const pathNodes = pathCoordinates.map(([lng, lat]) => ({ lat, lng }));
-      setCalculatedPath(pathNodes);
     } catch (error) {
       console.error('Error generating path preview:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Calculate full A* path for Unity AR
-  const calculateFullPath = () => {
-    if (!userCoords || !nodes || !edges || nodes.length === 0) {
-      return [];
-    }
-
-    try {
-      // Build graph
-      const graph = new Map();
-      nodes.forEach(n => graph.set(n.id, { ...n, neighbors: [] }));
-      
-      // Create nodesMap for blockage checking
-      const nodesMap = {};
-      nodes.forEach(n => { nodesMap[n.id] = n; });
-      
-      // Get active blockages
-      const activeBlockages = (blockages || []).filter(b => b.active);
-      
-      edges.forEach(e => {
-        if (graph.has(e.from) && graph.has(e.to)) {
-          // Check if edge passes through blockage
-          const fromNode = nodesMap[e.from];
-          const toNode = nodesMap[e.to];
-          if (fromNode && toNode) {
-            const midLng = (fromNode.lng + toNode.lng) / 2;
-            const midLat = (fromNode.lat + toNode.lat) / 2;
-            const isBlocked = activeBlockages.some(blockage => {
-              if (!blockage.points || blockage.points.length < 3) return false;
-              return isPointInPolygon(midLng, midLat, blockage.points);
-            });
-            if (isBlocked) return;
-          }
-          
-          graph.get(e.from).neighbors.push({ node: e.to, cost: e.weight || 1 });
-          graph.get(e.to).neighbors.push({ node: e.from, cost: e.weight || 1 });
-        }
-      });
-
-      // Find nearest nodes to start and end
-      let startNode = null, endNode = null, minStart = Infinity, minEnd = Infinity;
-      nodes.forEach(n => {
-        const dUser = getDistanceMeters(userCoords[1], userCoords[0], n.lat, n.lng);
-        const dDest = getDistanceMeters(building.latitude, building.longitude, n.lat, n.lng);
-        if (dUser < minStart) { minStart = dUser; startNode = n; }
-        if (dDest < minEnd) { minEnd = dDest; endNode = n; }
-      });
-
-      if (!startNode || !endNode) return [];
-
-      // A* pathfinding
-      const openSet = new Set([startNode.id]);
-      const closedSet = new Set();
-      const cameFrom = new Map();
-      const gScore = new Map(), fScore = new Map();
-      nodes.forEach(n => { gScore.set(n.id, Infinity); fScore.set(n.id, Infinity); });
-      gScore.set(startNode.id, 0);
-      fScore.set(startNode.id, getDistanceMeters(startNode.lat, startNode.lng, endNode.lat, endNode.lng));
-
-      while (openSet.size > 0) {
-        let current = null, lowest = Infinity;
-        for (const id of openSet) {
-          if (fScore.get(id) < lowest) { lowest = fScore.get(id); current = id; }
-        }
-        
-        if (current === endNode.id) {
-          // Reconstruct path
-          const path = [];
-          let c = current;
-          while (c) {
-            const node = graph.get(c);
-            path.unshift({ lat: node.lat, lng: node.lng });
-            c = cameFrom.get(c);
-          }
-          return path;
-        }
-        
-        openSet.delete(current);
-        closedSet.add(current);
-        
-        const currentNode = graph.get(current);
-        if (!currentNode) continue;
-        
-        for (const neighbor of currentNode.neighbors) {
-          if (closedSet.has(neighbor.node)) continue;
-          
-          const tentativeG = gScore.get(current) + neighbor.cost;
-          if (!openSet.has(neighbor.node)) openSet.add(neighbor.node);
-          else if (tentativeG >= gScore.get(neighbor.node)) continue;
-          
-          cameFrom.set(neighbor.node, current);
-          gScore.set(neighbor.node, tentativeG);
-          const neighborNode = graph.get(neighbor.node);
-          fScore.set(neighbor.node, tentativeG + getDistanceMeters(neighborNode.lat, neighborNode.lng, endNode.lat, endNode.lng));
-        }
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error calculating full path:', error);
-      return [];
     }
   };
 

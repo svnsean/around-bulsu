@@ -22,21 +22,31 @@ const findPath = (nodes, edges, startId, endId, activeBlockages = []) => {
   
   nodes.forEach(n => adjacency.set(n.id, []));
   
+  // Check if an edge passes through any active blockage
+  const isEdgeBlocked = (fromNode, toNode) => {
+    if (activeBlockages.length === 0) return false;
+    
+    // Check multiple points along the edge (start, 1/4, middle, 3/4, end)
+    const checkPoints = [0, 0.25, 0.5, 0.75, 1];
+    
+    return checkPoints.some(t => {
+      const checkLng = fromNode.lng + t * (toNode.lng - fromNode.lng);
+      const checkLat = fromNode.lat + t * (toNode.lat - fromNode.lat);
+      
+      return activeBlockages.some(blockage => {
+        if (!blockage.points || blockage.points.length < 3) return false;
+        return isPointInPolygon(checkLng, checkLat, blockage.points);
+      });
+    });
+  };
+  
   // Filter edges that pass through active blockages
   const validEdges = edges.filter(edge => {
-    if (activeBlockages.length === 0) return true;
     const fromNode = nodeMap.get(edge.from_node);
     const toNode = nodeMap.get(edge.to_node);
     if (!fromNode || !toNode) return false;
     
-    // Check if edge midpoint is inside any active blockage
-    const midLng = (fromNode.lng + toNode.lng) / 2;
-    const midLat = (fromNode.lat + toNode.lat) / 2;
-    
-    return !activeBlockages.some(blockage => {
-      if (!blockage.points || blockage.points.length < 3) return false;
-      return isPointInPolygon(midLng, midLat, blockage.points);
-    });
+    return !isEdgeBlocked(fromNode, toNode);
   });
   
   validEdges.forEach(edge => {

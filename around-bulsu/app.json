@@ -40,6 +40,14 @@
     },
     "plugins": [
       [
+        "@reactvision/react-viro",
+        {
+          "android": {
+            "xRMode": "AR"
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
