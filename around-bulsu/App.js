@@ -1,6 +1,10 @@
 // App.js
 import "./global.css";
+<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
+=======
+import React, { useState } from 'react';
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
@@ -9,10 +13,13 @@ import { Text, View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Icon } from './src/components/ui';
 
+<<<<<<< HEAD
 // Initialize Mapbox at app startup
 import { initializeMapbox } from './src/config/mapbox';
 initializeMapbox();
 
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 // Import screens
 import SplashScreen from './src/screens/SplashScreen';
 import NavigateScreen from './src/screens/NavigateScreen';

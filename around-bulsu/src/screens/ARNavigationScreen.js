@@ -11,7 +11,10 @@ import {
   Animated,
   PanResponder,
   Platform,
+<<<<<<< HEAD
   Easing,
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -21,7 +24,10 @@ import { Magnetometer, Accelerometer } from 'expo-sensors';
 import MapboxGL from '@rnmapbox/maps';
 import { MaterialCommunityIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+<<<<<<< HEAD
 import { MAPBOX_ACCESS_TOKEN } from '../config/mapbox';
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 // Import shared pathfinding utilities
 import {
@@ -35,10 +41,16 @@ import {
   calculateETA as calculateETAUtil
 } from '../lib/pathfinding';
 
+<<<<<<< HEAD
 // Mapbox is initialized in App.js
 
 // ViroReact imports - wrapped in try/catch to prevent crash if not available
 let ViroARScene, ViroARSceneNavigator, ViroText, ViroNode, ViroAmbientLight, Viro3DObject, ViroMaterials, ViroAnimations, ViroBox, ViroFlexView, ViroARPlane, ViroARPlaneSelector, ViroQuad, ViroPolyline;
+=======
+// ViroReact imports - wrapped in try/catch to prevent crash if not available
+// Note: We only import the essential components to avoid crashes from ViroAnimations/ViroMaterials (issue #412)
+let ViroARScene, ViroARSceneNavigator, ViroText, ViroNode, ViroAmbientLight;
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 let viroAvailable = false;
 
 try {
@@ -48,6 +60,7 @@ try {
   ViroText = viro.ViroText;
   ViroNode = viro.ViroNode;
   ViroAmbientLight = viro.ViroAmbientLight;
+<<<<<<< HEAD
   Viro3DObject = viro.Viro3DObject;
   ViroMaterials = viro.ViroMaterials;
   ViroAnimations = viro.ViroAnimations;
@@ -59,6 +72,10 @@ try {
   ViroPolyline = viro.ViroPolyline;
   viroAvailable = true;
   console.log('[ViroReact] Successfully loaded AR components');
+=======
+  viroAvailable = true;
+  console.log('[ViroReact] Successfully loaded essential components');
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 } catch (e) {
   console.warn('ViroReact not available:', e.message);
 }
@@ -68,6 +85,7 @@ const MAP_MIN_HEIGHT = 220;
 const MAP_MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
 const CAMERA_FOV = 70;
 
+<<<<<<< HEAD
 // ========== Google Maps Live View Style Animated Chevrons Component ==========
 const AnimatedChevrons = ({ direction = 0, isVisible = true }) => {
   const chevron1Opacity = useRef(new Animated.Value(0)).current;
@@ -170,6 +188,13 @@ const AnimatedChevrons = ({ direction = 0, isVisible = true }) => {
     </View>
   );
 };
+=======
+MapboxGL.setAccessToken('pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15MW41cWltIn0.Qz2opq51Zz3oj-MGPz7aow');
+
+// Note: ViroAnimations.registerAnimations and ViroMaterials.createMaterials
+// are NOT called at startup due to crash issues on some devices (see issue #412).
+// The AR scene uses simple ViroText elements without materials or animations.
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 // ========== GPS Kalman Filter Class ==========
 class GPSKalmanFilter {
@@ -321,6 +346,7 @@ const gpsToARPosition = (targetLat, targetLon, userLat, userLon, heading) => {
   return { x, y: 0, z, realDistance: distance };
 };
 
+<<<<<<< HEAD
 // Generate ground path dots between user and destination
 const generatePathDots = (pathNodes, userLat, userLon, heading, maxDots = 8) => {
   if (!pathNodes || pathNodes.length < 2) return [];
@@ -363,14 +389,24 @@ const generatePathDots = (pathNodes, userLat, userLon, heading, maxDots = 8) => 
 };
 
 // ========== Enhanced ViroReact AR Scene Component (Google Maps Live View Style) ==========
+=======
+// isPointInPolygon, isEdgeBlocked, detectTurn, and calculateETA are imported from pathfinding.js
+
+// ========== ViroReact AR Scene Component ==========
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 const ARNavigationScene = (props) => {
   const { arSceneNavigator } = props;
   const viroProps = arSceneNavigator.viroAppProps || {};
   
+<<<<<<< HEAD
   const [sceneReady, setSceneReady] = React.useState(false);
   const [trackingState, setTrackingState] = React.useState('TRACKING_UNAVAILABLE');
   const [surfaceFound, setSurfaceFound] = React.useState(false);
   const [groundY, setGroundY] = React.useState(-1.0); // Default ground level
+=======
+  // Use local state for AR scene to prevent re-render issues
+  const [sceneReady, setSceneReady] = React.useState(false);
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   const [arData, setArData] = React.useState({
     building: null,
     userLocation: null,
@@ -378,6 +414,7 @@ const ARNavigationScene = (props) => {
     currentDistance: null,
     nextWaypoint: null,
     relativeDirection: 0,
+<<<<<<< HEAD
     pathNodes: [],
     nextTurn: null,
   });
@@ -393,10 +430,18 @@ const ARNavigationScene = (props) => {
     });
     
     if (viroProps.building) {
+=======
+  });
+  
+  // Update AR data when props change (but don't trigger full re-render)
+  React.useEffect(() => {
+    if (viroProps.building && viroProps.userLocation) {
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       setArData({
         building: viroProps.building,
         userLocation: viroProps.userLocation,
         heading: viroProps.heading || 0,
+<<<<<<< HEAD
         currentDistance: viroProps.currentDistance || 0,
         nextWaypoint: viroProps.nextWaypoint,
         relativeDirection: viroProps.relativeDirection || 0,
@@ -449,10 +494,36 @@ const ARNavigationScene = (props) => {
             style={{ fontSize: 16, color: '#00E5FF', textAlign: 'center' }}
           />
         </ViroNode>
+=======
+        currentDistance: viroProps.currentDistance,
+        nextWaypoint: viroProps.nextWaypoint,
+        relativeDirection: viroProps.relativeDirection || 0,
+      });
+      if (!sceneReady) setSceneReady(true);
+    }
+  }, [viroProps.building, viroProps.userLocation, viroProps.heading, viroProps.currentDistance, viroProps.nextWaypoint, viroProps.relativeDirection]);
+
+  const { building, userLocation, heading, currentDistance, nextWaypoint, relativeDirection } = arData;
+
+  const onInitialized = (state, reason) => {
+    console.log('[ViroAR] Initialized:', state, reason);
+  };
+
+  if (!sceneReady || !userLocation || !building) {
+    return (
+      <ViroARScene onTrackingUpdated={onInitialized}>
+        <ViroAmbientLight color="#ffffff" intensity={200} />
+        <ViroText
+          text="Initializing AR..."
+          position={[0, 0, -3]}
+          style={{ fontSize: 20, color: '#ffffff', textAlignVertical: 'center', textAlign: 'center' }}
+        />
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       </ViroARScene>
     );
   }
 
+<<<<<<< HEAD
   // Calculate positions
   const destARPos = gpsToARPosition(building.latitude, building.longitude, userLocation[1], userLocation[0], heading);
   const waypointARPos = nextWaypoint ? gpsToARPosition(nextWaypoint.lat, nextWaypoint.lng, userLocation[1], userLocation[0], heading) : null;
@@ -589,10 +660,62 @@ const ARNavigationScene = (props) => {
           style={{ 
             fontSize: 32, 
             color: '#FFFFFF', 
+=======
+  // Calculate destination AR position
+  const destARPos = gpsToARPosition(
+    building.latitude, 
+    building.longitude, 
+    userLocation[1], 
+    userLocation[0], 
+    heading
+  );
+
+  // Calculate next waypoint AR position
+  const waypointARPos = nextWaypoint ? gpsToARPosition(
+    nextWaypoint.lat,
+    nextWaypoint.lng,
+    userLocation[1],
+    userLocation[0],
+    heading
+  ) : null;
+
+  // Calculate arrow rotation based on relative direction
+  const arrowRotation = [0, -relativeDirection || 0, 0];
+
+  return (
+    <ViroARScene onTrackingUpdated={onInitialized}>
+      {/* Lighting */}
+      <ViroAmbientLight color="#ffffff" intensity={300} />
+
+      {/* Direction indicator with distance - simple text-based approach */}
+      <ViroNode position={[0, 0, -3]} rotation={arrowRotation}>
+        {/* Direction arrow using text */}
+        <ViroText
+          text="▲"
+          position={[0, 0.3, 0]}
+          scale={[2, 2, 2]}
+          style={{ 
+            fontSize: 40, 
+            color: '#00E5FF', 
+            textAlignVertical: 'center', 
+            textAlign: 'center',
+          }}
+        />
+        
+        {/* Distance label */}
+        <ViroText
+          text={`${currentDistance || '--'}m`}
+          position={[0, -0.3, 0]}
+          style={{ 
+            fontSize: 24, 
+            color: '#00E5FF', 
+            textAlignVertical: 'center', 
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
             textAlign: 'center',
             fontWeight: 'bold',
           }}
         />
+<<<<<<< HEAD
       </ViroNode>
 
       {/* ===== TURN INDICATOR (Large, visible) ===== */}
@@ -662,6 +785,76 @@ const ARNavigationScene = (props) => {
             textAlign: 'center',
           }}
         />
+=======
+        
+        {/* Destination name */}
+        <ViroText
+          text={building.name}
+          position={[0, -0.6, 0]}
+          style={{ 
+            fontSize: 16, 
+            color: '#ffffff', 
+            textAlignVertical: 'center', 
+            textAlign: 'center',
+          }}
+        />
+      </ViroNode>
+
+      {/* Destination Marker (when close enough to see) */}
+      {destARPos.realDistance < 100 && (
+        <ViroNode position={[destARPos.x, 1, destARPos.z]}>
+          {/* Destination indicator */}
+          <ViroText
+            text="📍"
+            position={[0, 0.5, 0]}
+            scale={[2, 2, 2]}
+            style={{ 
+              fontSize: 30, 
+              color: '#FF4444', 
+              textAlignVertical: 'center', 
+              textAlign: 'center',
+            }}
+          />
+          
+          {/* Building name label */}
+          <ViroText
+            text={building.name}
+            position={[0, 0, 0]}
+            style={{ 
+              fontSize: 18, 
+              color: '#ffffff', 
+              textAlignVertical: 'center', 
+              textAlign: 'center',
+              fontWeight: 'bold',
+            }}
+          />
+          <ViroText
+            text={`${Math.round(destARPos.realDistance)}m away`}
+            position={[0, -0.3, 0]}
+            style={{ 
+              fontSize: 14, 
+              color: '#FF4444', 
+              textAlignVertical: 'center', 
+              textAlign: 'center',
+            }}
+          />
+        </ViroNode>
+      )}
+
+      {/* Next Waypoint indicator */}
+      {waypointARPos && waypointARPos.realDistance > 5 && waypointARPos.realDistance < 50 && (
+        <ViroNode position={[waypointARPos.x, 0.5, waypointARPos.z]}>
+          <ViroText
+            text="●"
+            style={{ 
+              fontSize: 20, 
+              color: '#FFD700', 
+              textAlignVertical: 'center', 
+              textAlign: 'center',
+            }}
+          />
+        </ViroNode>
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       )}
     </ViroARScene>
   );
@@ -671,6 +864,7 @@ const ARNavigationScene = (props) => {
 const ARNavigationScreen = ({ route, navigation }) => {
   const { building, userLocation: initialLocation, nodes, edges, blockages = [] } = route.params;
   
+<<<<<<< HEAD
   // Normalize initialLocation to [lng, lat] array format
   const normalizeLocation = (loc) => {
     if (!loc) {
@@ -704,6 +898,10 @@ const ARNavigationScreen = ({ route, navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [userLocation, setUserLocation] = useState(() => normalizeLocation(initialLocation));
   const [locationReady, setLocationReady] = useState(!!normalizeLocation(initialLocation));
+=======
+  const [permission, requestPermission] = useCameraPermissions();
+  const [userLocation, setUserLocation] = useState(initialLocation);
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   const [heading, setHeading] = useState(0);
   const [pitch, setPitch] = useState(0);
   const [navigationPath, setNavigationPath] = useState(null);
@@ -716,7 +914,12 @@ const ARNavigationScreen = ({ route, navigation }) => {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [destPosition, setDestPosition] = useState(null);
   const [eta, setEta] = useState(null);
+<<<<<<< HEAD
   // Always use 3D AR mode
+=======
+  // Default to HUD mode for stability - 3D AR (ViroReact) can be enabled manually
+  const [arMode, setArMode] = useState('hud');
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   const [viroError, setViroError] = useState(false);
   
   const isMountedRef = useRef(true);
@@ -738,12 +941,32 @@ const ARNavigationScreen = ({ route, navigation }) => {
     };
   }, []);
 
+<<<<<<< HEAD
   // Handle 3D AR mode initialization
   useEffect(() => {
     if (viroAvailable && !viroError) {
       console.log('[AR] Initializing ViroReact 3D AR mode');
     }
   }, [viroError]);
+=======
+  // Handle switching to 3D AR mode - with timeout fallback
+  useEffect(() => {
+    if (arMode === 'viro' && viroAvailable && !viroError) {
+      console.log('[AR] Switching to ViroReact 3D AR mode');
+      
+      // Set a timeout to fall back to HUD if ViroReact doesn't render properly
+      const timeout = setTimeout(() => {
+        if (isMountedRef.current && arMode === 'viro') {
+          console.log('[AR] ViroReact initialization timeout - falling back to HUD');
+          setViroError(true);
+          setArMode('hud');
+        }
+      }, 15000); // 15 second timeout
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [arMode, viroError]);
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
   useEffect(() => {
     if (!userLocation || !building) return;
@@ -765,6 +988,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
     let locSub, magSub, accelSub;
     
     const startTracking = async () => {
+<<<<<<< HEAD
       console.log('[GPS] Starting location tracking...');
       
       // Get initial position first if we don't have one
@@ -782,6 +1006,8 @@ const ARNavigationScreen = ({ route, navigation }) => {
         }
       }
       
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       locSub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.High, distanceInterval: 2, timeInterval: 1000 },
         (loc) => {
@@ -796,7 +1022,10 @@ const ARNavigationScreen = ({ route, navigation }) => {
           
           const newLoc = [filtered.lng, filtered.lat];
           setUserLocation(newLoc);
+<<<<<<< HEAD
           if (!locationReady) setLocationReady(true);
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
           
           const dist = getDistance(filtered.lat, filtered.lng, building.latitude, building.longitude);
           setCurrentDistance(Math.round(dist));
@@ -961,7 +1190,11 @@ const ARNavigationScreen = ({ route, navigation }) => {
     },
   });
 
+<<<<<<< HEAD
   // Loading Screen - waiting for permissions
+=======
+  // Loading Screen
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   if (!permission) {
     return (
       <View className="flex-1 items-center justify-center bg-black">
@@ -970,6 +1203,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
     );
   }
   
+<<<<<<< HEAD
   // Loading Screen - waiting for location
   if (!locationReady || !userLocation) {
     return (
@@ -981,6 +1215,8 @@ const ARNavigationScreen = ({ route, navigation }) => {
     );
   }
   
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   // Permission Screen
   if (!permission.granted) {
     return (
@@ -1042,8 +1278,13 @@ const ARNavigationScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
+<<<<<<< HEAD
       {/* ViroReact 3D AR Mode */}
       {viroAvailable && !viroError && ViroARSceneNavigator && (
+=======
+      {/* ViroReact 3D AR Mode - only if ViroReact is available and no error occurred */}
+      {arMode === 'viro' && viroAvailable && !viroError && ViroARSceneNavigator && (
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
         <ViroARSceneNavigator
           autofocus={true}
           initialScene={{
@@ -1056,14 +1297,18 @@ const ARNavigationScreen = ({ route, navigation }) => {
             currentDistance,
             nextWaypoint,
             relativeDirection: getRelativeDirection(),
+<<<<<<< HEAD
             pathNodes,
             nextTurn,
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
           }}
           style={StyleSheet.absoluteFillObject}
           numberOfTrackedImages={0}
         />
       )}
 
+<<<<<<< HEAD
       {/* Fallback Camera Mode (only if ViroReact is not available or errored) */}
       {(!viroAvailable || viroError) && (
         <CameraView style={StyleSheet.absoluteFillObject} facing="back" />
@@ -1104,12 +1349,29 @@ const ARNavigationScreen = ({ route, navigation }) => {
         {/* Turn Instruction Banner */}
         {nextTurn && nextTurn.distance < 60 && (
           <View style={styles.turnBannerOverlay}>
+=======
+      {/* Fallback HUD Mode with Camera (also used if Viro is not available or errored) */}
+      {(arMode === 'hud' || !viroAvailable || viroError) && (
+        <>
+          <CameraView style={StyleSheet.absoluteFillObject} facing="back" />
+
+      {/* 2. The HUD Overlay */}
+      <SafeAreaView style={styles.hudOverlay} pointerEvents="box-none">
+        
+        {/* Top: Turn Instruction Banner */}
+        {nextTurn && nextTurn.distance < 60 && (
+          <View style={styles.turnBanner}>
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
             <MaterialCommunityIcons 
               name={nextTurn.type === 'left' ? 'arrow-left-top-bold' : 
                     nextTurn.type === 'right' ? 'arrow-right-top-bold' :
                     nextTurn.type === 'slight-left' ? 'arrow-top-left' :
                     nextTurn.type === 'slight-right' ? 'arrow-top-right' : 'arrow-up-bold'} 
+<<<<<<< HEAD
               size={36} 
+=======
+              size={44} 
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
               color="#FFFFFF" 
             />
             <View style={styles.turnTextContainer}>
@@ -1123,6 +1385,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
             </View>
           </View>
         )}
+<<<<<<< HEAD
       </View>
 
       {/* Ground Path Dots (fallback mode only) */}
@@ -1167,6 +1430,50 @@ const ARNavigationScreen = ({ route, navigation }) => {
       )}
 
       {/* Top Left: Compass HUD */}
+=======
+
+        {/* Floating Destination Label (Only if looking at it) */}
+        {destPosition?.isFacing && currentDistance > 15 && (
+          <View style={styles.destinationTag}>
+            <FontAwesome5 name="map-marker-alt" size={18} color="#FF4444" />
+            <Text style={styles.destinationText}>{building.name}</Text>
+            <Text style={styles.destinationDistance}>{currentDistance}m</Text>
+          </View>
+        )}
+
+        {/* Spacer to push arrow to bottom */}
+        <View style={styles.spacer} />
+
+        {/* Bottom Center: The Directional Arrow */}
+        <View style={styles.arrowContainer}>
+          <View style={styles.arrowShadow}>
+            <View style={{ transform: [{ rotate: `${getRelativeDirection()}deg` }] }}>
+              <MaterialCommunityIcons 
+                name="navigation" 
+                size={120} 
+                color="#00E5FF" 
+                style={styles.arrowIcon}
+              />
+            </View>
+          </View>
+          <View style={styles.distanceBadge}>
+            <Text style={styles.distanceValue}>{currentDistance || '--'}</Text>
+            <Text style={styles.distanceUnit}>m away</Text>
+          </View>
+        </View>
+
+        {/* ETA Badge */}
+        {eta && (
+          <View style={styles.etaBadge}>
+            <MaterialCommunityIcons name="walk" size={18} color="#00E5FF" />
+            <Text style={styles.etaText}>ETA: {eta}</Text>
+          </View>
+        )}
+
+      </SafeAreaView>
+
+      {/* Top Left: Compass HUD (HUD mode only) */}
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       <View style={styles.topLeftHUD}>
         <View style={styles.compassPanel}>
           <Text style={styles.compassDirection}>
@@ -1177,6 +1484,11 @@ const ARNavigationScreen = ({ route, navigation }) => {
           <Text style={styles.compassDegrees}>{Math.round(heading)}°</Text>
         </View>
       </View>
+<<<<<<< HEAD
+=======
+        </>
+      )}
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
       {/* ========== Shared UI Elements (both modes) ========== */}
 
@@ -1188,10 +1500,34 @@ const ARNavigationScreen = ({ route, navigation }) => {
 
       {/* AR Live Badge */}
       <View style={styles.arBadge}>
+<<<<<<< HEAD
         <View style={[styles.arDot, viroAvailable && !viroError && styles.arDot3D]} />
         <Text style={styles.arBadgeText}>{viroAvailable && !viroError ? '3D AR' : 'AR'}</Text>
       </View>
 
+=======
+        <View style={[styles.arDot, arMode === 'viro' && viroAvailable && !viroError && styles.arDot3D]} />
+        <Text style={styles.arBadgeText}>{arMode === 'viro' && viroAvailable && !viroError ? '3D AR' : 'AR HUD'}</Text>
+      </View>
+
+      {/* AR Mode Toggle Button - only show if ViroReact is available and hasn't errored */}
+      {viroAvailable && !viroError && (
+        <TouchableOpacity 
+          style={styles.arModeToggle} 
+          onPress={() => setArMode(arMode === 'viro' ? 'hud' : 'viro')}
+        >
+          <MaterialCommunityIcons 
+            name={arMode === 'viro' ? 'cube-outline' : 'camera'} 
+            size={20} 
+            color="#FFFFFF" 
+          />
+          <Text style={styles.arModeToggleText}>
+            {arMode === 'viro' ? 'Switch to HUD' : 'Switch to 3D'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       {/* Pull-up Map */}
       <Animated.View 
         style={[styles.mapContainer, { height: mapHeight }]} 
@@ -1203,6 +1539,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
             {isMapExpanded ? 'Drag down to minimize' : 'Drag up for map'}
           </Text>
         </View>
+<<<<<<< HEAD
         {userLocation ? (
           <MapboxGL.MapView 
             style={styles.map} 
@@ -1248,6 +1585,42 @@ const ARNavigationScreen = ({ route, navigation }) => {
             <Text style={{ color: '#666', marginTop: 8 }}>Waiting for location...</Text>
           </View>
         )}
+=======
+        <MapboxGL.MapView 
+          style={styles.map} 
+          styleURL={MapboxGL.StyleURL.Street} 
+          logoEnabled={false} 
+          compassEnabled={false}
+        >
+          <MapboxGL.Camera 
+            zoomLevel={18} 
+            centerCoordinate={userLocation} 
+            heading={heading} 
+            pitch={45} 
+            animationDuration={500} 
+            animationMode="flyTo"
+          />
+          <MapboxGL.UserLocation visible={true} />
+          {navigationPath && (
+            <MapboxGL.ShapeSource id="navPath" shape={navigationPath}>
+              <MapboxGL.LineLayer 
+                id="navPathLayer" 
+                style={{ 
+                  lineColor: '#00E5FF', 
+                  lineWidth: 5, 
+                  lineCap: 'round', 
+                  lineJoin: 'round' 
+                }} 
+              />
+            </MapboxGL.ShapeSource>
+          )}
+          <MapboxGL.PointAnnotation id="destination" coordinate={[building.longitude, building.latitude]}>
+            <View style={styles.mapDestinationMarker}>
+              <FontAwesome5 name="flag-checkered" size={16} color="#FFFFFF" />
+            </View>
+          </MapboxGL.PointAnnotation>
+        </MapboxGL.MapView>
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       </Animated.View>
     </View>
   );
@@ -1280,6 +1653,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0, 229, 255, 0.3)',
     marginTop: 20,
   },
+<<<<<<< HEAD
   turnBannerOverlay: {
     position: 'absolute',
     top: 120,
@@ -1295,6 +1669,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(66, 133, 244, 0.6)',
   },
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   turnTextContainer: {
     marginLeft: 16,
   },
@@ -1340,6 +1716,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
+<<<<<<< HEAD
   // Path Dots Container (Ground-level AR visualization)
   pathDotsContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -1454,6 +1831,9 @@ const styles = StyleSheet.create({
   },
   
   // Arrow Container (Bottom Center) - OLD, keeping for reference
+=======
+  // Arrow Container (Bottom Center)
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   arrowContainer: {
     alignItems: 'center',
     marginBottom: 40,
@@ -1640,7 +2020,10 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
+<<<<<<< HEAD
     minHeight: 150,
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   },
   mapDestinationMarker: {
     width: 32,

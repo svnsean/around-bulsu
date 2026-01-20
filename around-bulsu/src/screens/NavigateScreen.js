@@ -7,9 +7,23 @@ import { DrawerActions } from '@react-navigation/native';
 import { supabase, subscribeToTable } from '../supabase';
 import SearchBottomSheet from '../components/SearchBottomSheet';
 import { Ionicons } from '@expo/vector-icons';
+<<<<<<< HEAD
 import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
 
 // Mapbox is initialized in App.js via initializeMapbox()
+=======
+
+MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
+
+const CAMPUS_BOUNDS = {
+  north: 14.8485,
+  south: 14.8410,
+  east: 120.8150,
+  west: 120.8050
+};
+
+const BSU_CENTER = [120.813778, 14.857830]; // From admin site
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 const NavigateScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
@@ -19,7 +33,10 @@ const NavigateScreen = ({ navigation }) => {
   const [blockages, setBlockages] = useState([]);
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+<<<<<<< HEAD
   const [mapReady, setMapReady] = useState(false);
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const bottomSheetRef = useRef(null);
   const mapRef = useRef(null);
@@ -82,7 +99,17 @@ const NavigateScreen = ({ navigation }) => {
   // Check if user is outside BSU campus (rough boundary check)
   const checkIfOutsideCampus = (coords) => {
     if (!coords) return;
+<<<<<<< HEAD
     setIsOutsideCampus(!isWithinCampus(coords.latitude, coords.longitude));
+=======
+    
+    const outside = coords.latitude > CAMPUS_BOUNDS.north ||
+                    coords.latitude < CAMPUS_BOUNDS.south ||
+                    coords.longitude > CAMPUS_BOUNDS.east ||
+                    coords.longitude < CAMPUS_BOUNDS.west;
+    
+    setIsOutsideCampus(outside);
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
   };
 
   // Handle building pin click
@@ -151,6 +178,7 @@ const NavigateScreen = ({ navigation }) => {
         style={{ flex: 1 }} 
         styleURL={MapboxGL.StyleURL.Street}
         logoEnabled={false}
+<<<<<<< HEAD
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
           console.log('[Map] Finished loading map');
@@ -159,6 +187,8 @@ const NavigateScreen = ({ navigation }) => {
         onDidFailLoadingMap={(error) => {
           console.error('[Map] Failed to load map:', error);
         }}
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
       >
         <MapboxGL.Camera 
           ref={cameraRef}
@@ -172,8 +202,13 @@ const NavigateScreen = ({ navigation }) => {
           showsUserHeadingIndicator={true}
         />
 
+<<<<<<< HEAD
         {/* Building Markers - Only render when map is ready */}
         {mapReady && buildings.map((building) => (
+=======
+        {/* Building Markers */}
+        {buildings.map((building) => (
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
           <MapboxGL.PointAnnotation 
             key={building.id} 
             id={building.id} 

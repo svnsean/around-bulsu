@@ -39,7 +39,10 @@
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
+<<<<<<< HEAD
     "expo-updates": "~29.0.16",
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
     "expo-web-browser": "~15.0.10",
     "firebase": "^12.7.0",
     "nativewind": "^4.2.1",
@@ -63,8 +66,12 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
+<<<<<<< HEAD
   "private": true,
   "optionalDependencies": {
     "lightningcss-linux-x64-gnu": "^1.27.0"
   }
+=======
+  "private": true
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 }

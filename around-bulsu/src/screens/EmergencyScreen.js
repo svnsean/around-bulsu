@@ -12,7 +12,10 @@ import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, subscribeToTable } from '../supabase';
+<<<<<<< HEAD
 import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
+=======
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 // Import shared pathfinding utilities
 import {
@@ -22,7 +25,18 @@ import {
   isEdgeBlocked
 } from '../lib/pathfinding';
 
+<<<<<<< HEAD
 // Mapbox is initialized in App.js
+=======
+MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
+
+const CAMPUS_BOUNDS = {
+  north: 14.8485,
+  south: 14.8410,
+  east: 120.8150,
+  west: 120.8050
+};
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 // getDistance is now imported from pathfinding.js
 

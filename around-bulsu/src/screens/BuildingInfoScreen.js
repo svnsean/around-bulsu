@@ -17,7 +17,11 @@ import { findPath, pathToGeoJSON, getPathBounds, getDistance } from '../lib/path
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+<<<<<<< HEAD
 // Mapbox is initialized in App.js
+=======
+MapboxGL.setAccessToken('pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15MW41cWltIn0.Qz2opq51Zz3oj-MGPz7aow');
+>>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
 
 const BuildingInfoScreen = ({ route, navigation }) => {
   const { building, userLocation, nodes, edges, blockages = [] } = route.params;
