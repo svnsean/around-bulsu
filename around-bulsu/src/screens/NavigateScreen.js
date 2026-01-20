@@ -8,6 +8,7 @@ import { supabase, subscribeToTable } from '../supabase';
 import SearchBottomSheet from '../components/SearchBottomSheet';
 import { Ionicons } from '@expo/vector-icons';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
 
 // Mapbox is initialized in App.js via initializeMapbox()
@@ -24,6 +25,11 @@ const CAMPUS_BOUNDS = {
 
 const BSU_CENTER = [120.813778, 14.857830]; // From admin site
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
+
+// Mapbox is initialized in App.js via initializeMapbox()
+>>>>>>> 0846c07 (AR feature done)
 
 const NavigateScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
@@ -34,9 +40,13 @@ const NavigateScreen = ({ navigation }) => {
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 <<<<<<< HEAD
+<<<<<<< HEAD
   const [mapReady, setMapReady] = useState(false);
 =======
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+  const [mapReady, setMapReady] = useState(false);
+>>>>>>> 0846c07 (AR feature done)
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const bottomSheetRef = useRef(null);
   const mapRef = useRef(null);
@@ -100,6 +110,7 @@ const NavigateScreen = ({ navigation }) => {
   const checkIfOutsideCampus = (coords) => {
     if (!coords) return;
 <<<<<<< HEAD
+<<<<<<< HEAD
     setIsOutsideCampus(!isWithinCampus(coords.latitude, coords.longitude));
 =======
     
@@ -110,6 +121,9 @@ const NavigateScreen = ({ navigation }) => {
     
     setIsOutsideCampus(outside);
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+    setIsOutsideCampus(!isWithinCampus(coords.latitude, coords.longitude));
+>>>>>>> 0846c07 (AR feature done)
   };
 
   // Handle building pin click
@@ -179,6 +193,9 @@ const NavigateScreen = ({ navigation }) => {
         styleURL={MapboxGL.StyleURL.Street}
         logoEnabled={false}
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 0846c07 (AR feature done)
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
           console.log('[Map] Finished loading map');
@@ -187,8 +204,11 @@ const NavigateScreen = ({ navigation }) => {
         onDidFailLoadingMap={(error) => {
           console.error('[Map] Failed to load map:', error);
         }}
+<<<<<<< HEAD
 =======
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+>>>>>>> 0846c07 (AR feature done)
       >
         <MapboxGL.Camera 
           ref={cameraRef}
@@ -203,12 +223,17 @@ const NavigateScreen = ({ navigation }) => {
         />
 
 <<<<<<< HEAD
+<<<<<<< HEAD
         {/* Building Markers - Only render when map is ready */}
         {mapReady && buildings.map((building) => (
 =======
         {/* Building Markers */}
         {buildings.map((building) => (
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+        {/* Building Markers - Only render when map is ready */}
+        {mapReady && buildings.map((building) => (
+>>>>>>> 0846c07 (AR feature done)
           <MapboxGL.PointAnnotation 
             key={building.id} 
             id={building.id} 

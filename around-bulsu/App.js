@@ -1,10 +1,14 @@
 // App.js
 import "./global.css";
 <<<<<<< HEAD
+<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
 =======
 import React, { useState } from 'react';
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+import React, { useState, useEffect } from 'react';
+>>>>>>> 0846c07 (AR feature done)
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
@@ -14,12 +18,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Icon } from './src/components/ui';
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 0846c07 (AR feature done)
 // Initialize Mapbox at app startup
 import { initializeMapbox } from './src/config/mapbox';
 initializeMapbox();
 
+<<<<<<< HEAD
 =======
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+>>>>>>> 0846c07 (AR feature done)
 // Import screens
 import SplashScreen from './src/screens/SplashScreen';
 import NavigateScreen from './src/screens/NavigateScreen';

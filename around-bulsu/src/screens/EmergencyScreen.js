@@ -13,9 +13,13 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, subscribeToTable } from '../supabase';
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
 =======
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
+>>>>>>> 0846c07 (AR feature done)
 
 // Import shared pathfinding utilities
 import {
@@ -25,6 +29,7 @@ import {
   isEdgeBlocked
 } from '../lib/pathfinding';
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 // Mapbox is initialized in App.js
 =======
@@ -37,6 +42,9 @@ const CAMPUS_BOUNDS = {
   west: 120.8050
 };
 >>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
+=======
+// Mapbox is initialized in App.js
+>>>>>>> 0846c07 (AR feature done)
 
 // getDistance is now imported from pathfinding.js
 
