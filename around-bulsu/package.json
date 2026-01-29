@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/bottom-tabs": "^7.9.0",
     "@react-navigation/drawer": "^7.7.10",
     "@react-navigation/elements": "^2.6.3",
@@ -24,6 +26,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~54.0.29",
+    "expo-blur": "^15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.12",
@@ -39,14 +42,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
-<<<<<<< HEAD
-<<<<<<< HEAD
     "expo-updates": "~29.0.16",
-=======
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-    "expo-updates": "~29.0.16",
->>>>>>> 0846c07 (AR feature done)
     "expo-web-browser": "~15.0.10",
     "firebase": "^12.7.0",
     "nativewind": "^4.2.1",
@@ -70,18 +66,8 @@
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 0846c07 (AR feature done)
   "private": true,
   "optionalDependencies": {
     "lightningcss-linux-x64-gnu": "^1.27.0"
   }
-<<<<<<< HEAD
-=======
-  "private": true
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
->>>>>>> 0846c07 (AR feature done)
 }

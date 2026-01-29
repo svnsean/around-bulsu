@@ -14,6 +14,7 @@ const CATEGORIES = [
   { value: 'medical', label: 'Medical', icon: Heart, color: 'bg-pink-100 text-pink-700' },
   { value: 'security', label: 'Campus Security', icon: Users, color: 'bg-blue-100 text-blue-700' },
   { value: 'admin', label: 'Administration', icon: Building, color: 'bg-purple-100 text-purple-700' },
+  { value: 'other', label: 'Other', icon: Phone, color: 'bg-gray-100 text-gray-700' },
 ];
 
 const ContactsManager = () => {
@@ -93,12 +94,21 @@ const ContactsManager = () => {
   };
 
   const getCategoryInfo = (category) => {
-    return CATEGORIES.find(c => c.value === category) || CATEGORIES[0];
+    return CATEGORIES.find(c => c.value === category) || CATEGORIES.find(c => c.value === 'other');
+  };
+
+  // Group contacts by category, putting uncategorized ones in "Other"
+  const getContactCategory = (contact) => {
+    const knownCategories = ['emergency', 'medical', 'security', 'admin'];
+    if (!contact.category || !knownCategories.includes(contact.category)) {
+      return 'other';
+    }
+    return contact.category;
   };
 
   const groupedContacts = CATEGORIES.map(cat => ({
     ...cat,
-    contacts: contacts.filter(c => c.category === cat.value)
+    contacts: contacts.filter(c => getContactCategory(c) === cat.value)
   })).filter(cat => cat.contacts.length > 0);
 
   return (
@@ -124,7 +134,7 @@ const ContactsManager = () => {
         {/* Category Cards */}
         <div className="grid gap-6">
           {CATEGORIES.map(category => {
-            const categoryContacts = contacts.filter(c => c.category === category.value);
+            const categoryContacts = contacts.filter(c => getContactCategory(c) === category.value);
             const Icon = category.icon;
             
             return (

@@ -15,6 +15,7 @@ const CATEGORIES = [
   { value: 'medical', label: 'Medical', icon: Heart, color: 'bg-pink-100 text-pink-700' },
   { value: 'security', label: 'Campus Security', icon: Users, color: 'bg-blue-100 text-blue-700' },
   { value: 'admin', label: 'Administration', icon: Building, color: 'bg-purple-100 text-purple-700' },
+  { value: 'other', label: 'Other', icon: Phone, color: 'bg-gray-100 text-gray-700' },
 ];
 
 const InfoManager = () => {
@@ -180,7 +181,20 @@ const InfoManager = () => {
     return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const getCategoryInfo = (category) => CATEGORIES.find(c => c.value === category) || CATEGORIES[0];
+  const getCategoryInfo = (category) => CATEGORIES.find(c => c.value === category) || CATEGORIES.find(c => c.value === 'other');
+
+  // Helper to get contact's effective category (handles unknown categories)
+  const getContactCategory = (contact) => {
+    // All valid category values from CATEGORIES
+    const validCategories = CATEGORIES.map(c => c.value); // ['emergency', 'medical', 'security', 'admin', 'other']
+    const contactCategory = contact.category?.trim?.() || contact.category;
+    
+    // If contact has a valid category, use it; otherwise default to 'other'
+    if (contactCategory && validCategories.includes(contactCategory)) {
+      return contactCategory;
+    }
+    return 'other';
+  };
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -236,7 +250,7 @@ const InfoManager = () => {
           /* Contacts - Clean List Design */
           <div className="space-y-6">
             {CATEGORIES.map(category => {
-              const categoryContacts = contacts.filter(c => c.category === category.value);
+              const categoryContacts = contacts.filter(c => getContactCategory(c) === category.value);
               const Icon = category.icon;
               if (categoryContacts.length === 0) return null;
               return (

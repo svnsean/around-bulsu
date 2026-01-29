@@ -12,14 +12,7 @@ import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, subscribeToTable } from '../supabase';
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
-=======
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
->>>>>>> 0846c07 (AR feature done)
 
 // Import shared pathfinding utilities
 import {
@@ -29,22 +22,7 @@ import {
   isEdgeBlocked
 } from '../lib/pathfinding';
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 // Mapbox is initialized in App.js
-=======
-MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
-
-const CAMPUS_BOUNDS = {
-  north: 14.8485,
-  south: 14.8410,
-  east: 120.8150,
-  west: 120.8050
-};
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-// Mapbox is initialized in App.js
->>>>>>> 0846c07 (AR feature done)
 
 // getDistance is now imported from pathfinding.js
 
@@ -238,11 +216,6 @@ const EmergencyScreen = ({ navigation }) => {
   };
 
   const handleActivateEvacuation = () => {
-    if (isOutsideCampus) {
-      Alert.alert('Outside Campus', 'Evacuation guidance is only available when you are inside the BSU campus.');
-      return;
-    }
-
     if (!nearestZone) {
       Alert.alert('No Evacuation Zones', 'No evacuation zones are currently defined. Please contact campus security.');
       return;
@@ -452,7 +425,7 @@ const styles = {
   },
   warningBanner: {
     position: 'absolute',
-    top: 130,
+    top: 50,
     left: 16,
     right: 16,
     backgroundColor: '#f59e0b',
@@ -461,7 +434,9 @@ const styles = {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8
+    gap: 8,
+    zIndex: 100,
+    elevation: 100
   },
   warningText: {
     color: '#fff',

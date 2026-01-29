@@ -9,10 +9,12 @@ import {
   Image,
   Linking,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
-import { Icon } from '../components/ui';
+import { Icon, ContactListSkeleton, BuildingListSkeleton, AnimatedCard, AnimatedListItem } from '../components/ui';
 import { supabase, subscribeToTable } from '../supabase';
+import * as Haptics from 'expo-haptics';
 
 // Icon with circle background component
 const IconCircle = ({ name, size, color, bgColor, circleSize }) => (
@@ -38,11 +40,13 @@ const InfoScreen = ({ navigation }) => {
   const [buildings, setBuildings] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Supabase listeners
   useEffect(() => {
     const unsubContacts = subscribeToTable('emergency_contacts', (data) => {
       setContacts(data.sort((a, b) => (a.order || 0) - (b.order || 0)));
+      setIsLoading(false);
     });
     const unsubBuildings = subscribeToTable('buildings', (data) => {
       setBuildings(data.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
@@ -76,6 +80,7 @@ const InfoScreen = ({ navigation }) => {
   }, {});
 
   const handleCall = (phone) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Linking.openURL(`tel:${phone}`);
   };
 
@@ -93,25 +98,27 @@ const InfoScreen = ({ navigation }) => {
   const renderContacts = () => (
     <ScrollView
       className="flex-1 px-4 pt-4"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#800000']} tintColor="#800000" />}
     >
-      {Object.keys(groupedContacts).length === 0 ? (
+      {isLoading ? (
+        <ContactListSkeleton count={5} />
+      ) : Object.keys(groupedContacts).length === 0 ? (
         <View className="flex-1 items-center justify-center py-16">
           <IconCircle name="phone" size={32} color="#9CA3AF" bgColor="#F3F4F6" circleSize={72} />
           <Text className="text-base text-gray-400 mt-4">No emergency contacts available</Text>
         </View>
       ) : (
-        Object.entries(groupedContacts).map(([category, categoryContacts]) => (
+        Object.entries(groupedContacts).map(([category, categoryContacts], catIndex) => (
           <View key={category} className="mb-3">
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-1">
               {category}
             </Text>
-            {categoryContacts.map(contact => (
-              <TouchableOpacity
+            {categoryContacts.map((contact, index) => (
+              <AnimatedCard
                 key={contact.id}
-                className="flex-row items-center bg-white p-4 rounded-2xl mb-2 shadow-sm border border-gray-100"
+                delay={(catIndex * 3 + index) * 50}
                 onPress={() => handleCall(contact.phone)}
-                activeOpacity={0.7}
+                style={{ marginBottom: 8, padding: 16, flexDirection: 'row', alignItems: 'center' }}
               >
                 <View className="flex-1">
                   <Text className="text-base font-semibold text-gray-900 mb-1">
@@ -122,7 +129,7 @@ const InfoScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <IconCircle name="phone-call" size={20} color="#16A34A" bgColor="#DCFCE7" circleSize={44} />
-              </TouchableOpacity>
+              </AnimatedCard>
             ))}
           </View>
         ))
@@ -145,44 +152,43 @@ const InfoScreen = ({ navigation }) => {
           <Text className="text-base text-gray-400 mt-4">No buildings available</Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          className="flex-row items-center bg-white rounded-2xl mb-3 overflow-hidden shadow-sm border border-gray-100"
-          onPress={() => navigation.navigate('Navigate', {
-            screen: 'BuildingInfo',
-            params: { building: item }
-          })}
-          activeOpacity={0.7}
+      renderItem={({ item, index }) => (
+        <AnimatedListItem
+          index={index}
+          onPress={() => navigation.navigate('BuildingInfo', { building: item })}
+          style={{ padding: 0, marginBottom: 12, overflow: 'hidden' }}
         >
-          {item.images && item.images.length > 0 ? (
-            <Image 
-              source={{ uri: item.images[0] }} 
-              className="w-20 h-20"
-            />
-          ) : (
-            <View className="w-20 h-20 bg-gray-100 items-center justify-center">
-              <Icon name="building" size={32} color="#9CA3AF" />
+          <View className="flex-row items-center">
+            {item.images && item.images.length > 0 ? (
+              <Image 
+                source={{ uri: item.images[0] }} 
+                className="w-20 h-20"
+              />
+            ) : (
+              <View className="w-20 h-20 bg-gray-100 items-center justify-center">
+                <Icon name="building" size={32} color="#9CA3AF" />
+              </View>
+            )}
+            <View className="flex-1 p-3">
+              <Text className="text-base font-semibold text-gray-900 mb-1">
+                {item.name}
+              </Text>
+              {item.description && (
+                <Text className="text-sm text-gray-500 leading-5" numberOfLines={2}>
+                  {item.description}
+                </Text>
+              )}
+              {item.rooms && item.rooms.length > 0 && (
+                <Text className="text-xs text-maroon-800 mt-2 font-medium">
+                  {item.rooms.length} rooms/facilities
+                </Text>
+              )}
             </View>
-          )}
-          <View className="flex-1 p-3">
-            <Text className="text-base font-semibold text-gray-900 mb-1">
-              {item.name}
-            </Text>
-            {item.description && (
-              <Text className="text-sm text-gray-500 leading-5" numberOfLines={2}>
-                {item.description}
-              </Text>
-            )}
-            {item.rooms && item.rooms.length > 0 && (
-              <Text className="text-xs text-maroon-800 mt-2 font-medium">
-                {item.rooms.length} rooms/facilities
-              </Text>
-            )}
+            <View className="pr-4">
+              <Icon name="chevron-right" size={20} color="#D1D5DB" />
+            </View>
           </View>
-          <View className="pr-4">
-            <Icon name="chevron-right" size={20} color="#D1D5DB" />
-          </View>
-        </TouchableOpacity>
+        </AnimatedListItem>
       )}
     />
   );
@@ -201,12 +207,15 @@ const InfoScreen = ({ navigation }) => {
           <Text className="text-base text-gray-400 mt-4">No announcements available</Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <View className="bg-white rounded-2xl mb-4 overflow-hidden shadow-sm border border-gray-100">
-          {item.imageUrl && (
+      renderItem={({ item, index }) => (
+        <AnimatedCard
+          delay={index * 80}
+          style={{ padding: 0, marginBottom: 16, overflow: 'hidden' }}
+        >
+          {(item.imageUrl || item.image_url) && (
             <Image 
-              source={{ uri: item.imageUrl }} 
-              className="w-full h-44"
+              source={{ uri: item.imageUrl || item.image_url }} 
+              className="w-full h-72"
               resizeMode="cover"
             />
           )}
@@ -221,7 +230,7 @@ const InfoScreen = ({ navigation }) => {
               Posted {formatDate(item.created_at)}
             </Text>
           </View>
-        </View>
+        </AnimatedCard>
       )}
     />
   );
@@ -246,7 +255,10 @@ const InfoScreen = ({ navigation }) => {
             className={`flex-1 py-4 items-center border-b-[3px] ${
               activeTab === tab ? 'border-maroon-800' : 'border-transparent'
             }`}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setActiveTab(tab);
+            }}
             activeOpacity={0.7}
           >
             <Text className={`text-sm font-medium ${

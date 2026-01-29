@@ -2,34 +2,14 @@
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Alert, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Alert, ActivityIndicator, Text, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
 import { DrawerActions } from '@react-navigation/native';
 import { supabase, subscribeToTable } from '../supabase';
 import SearchBottomSheet from '../components/SearchBottomSheet';
 import { Ionicons } from '@expo/vector-icons';
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
 
 // Mapbox is initialized in App.js via initializeMapbox()
-=======
-
-MapboxGL.setAccessToken('pk.eyJ1Ijoic2VhbmFvbmciLCJhIjoiY205aHk0a2xsMGc4ZzJxcHprZ3k2OWVkcyJ9.ze3cQ-CzjL2Gtgp2VZTmaQ');
-
-const CAMPUS_BOUNDS = {
-  north: 14.8485,
-  south: 14.8410,
-  east: 120.8150,
-  west: 120.8050
-};
-
-const BSU_CENTER = [120.813778, 14.857830]; // From admin site
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
-
-// Mapbox is initialized in App.js via initializeMapbox()
->>>>>>> 0846c07 (AR feature done)
 
 const NavigateScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
@@ -39,14 +19,7 @@ const NavigateScreen = ({ navigation }) => {
   const [blockages, setBlockages] = useState([]);
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-<<<<<<< HEAD
-<<<<<<< HEAD
   const [mapReady, setMapReady] = useState(false);
-=======
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-  const [mapReady, setMapReady] = useState(false);
->>>>>>> 0846c07 (AR feature done)
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const bottomSheetRef = useRef(null);
   const mapRef = useRef(null);
@@ -109,21 +82,7 @@ const NavigateScreen = ({ navigation }) => {
   // Check if user is outside BSU campus (rough boundary check)
   const checkIfOutsideCampus = (coords) => {
     if (!coords) return;
-<<<<<<< HEAD
-<<<<<<< HEAD
     setIsOutsideCampus(!isWithinCampus(coords.latitude, coords.longitude));
-=======
-    
-    const outside = coords.latitude > CAMPUS_BOUNDS.north ||
-                    coords.latitude < CAMPUS_BOUNDS.south ||
-                    coords.longitude > CAMPUS_BOUNDS.east ||
-                    coords.longitude < CAMPUS_BOUNDS.west;
-    
-    setIsOutsideCampus(outside);
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-    setIsOutsideCampus(!isWithinCampus(coords.latitude, coords.longitude));
->>>>>>> 0846c07 (AR feature done)
   };
 
   // Handle building pin click
@@ -192,10 +151,6 @@ const NavigateScreen = ({ navigation }) => {
         style={{ flex: 1 }} 
         styleURL={MapboxGL.StyleURL.Street}
         logoEnabled={false}
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 0846c07 (AR feature done)
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
           console.log('[Map] Finished loading map');
@@ -204,11 +159,6 @@ const NavigateScreen = ({ navigation }) => {
         onDidFailLoadingMap={(error) => {
           console.error('[Map] Failed to load map:', error);
         }}
-<<<<<<< HEAD
-=======
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
->>>>>>> 0846c07 (AR feature done)
       >
         <MapboxGL.Camera 
           ref={cameraRef}
@@ -222,32 +172,79 @@ const NavigateScreen = ({ navigation }) => {
           showsUserHeadingIndicator={true}
         />
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-        {/* Building Markers - Only render when map is ready */}
-        {mapReady && buildings.map((building) => (
-=======
-        {/* Building Markers */}
-        {buildings.map((building) => (
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-        {/* Building Markers - Only render when map is ready */}
-        {mapReady && buildings.map((building) => (
->>>>>>> 0846c07 (AR feature done)
-          <MapboxGL.PointAnnotation 
-            key={building.id} 
-            id={building.id} 
-            coordinate={[building.longitude, building.latitude]}
-            onSelected={() => handleBuildingPress(building)}
+        {/* Building Markers - Matching Admin MapEditor style */}
+        {mapReady && buildings.length > 0 && (
+          <MapboxGL.ShapeSource
+            id="buildings-source"
+            shape={{
+              type: 'FeatureCollection',
+              features: buildings.map(b => ({
+                type: 'Feature',
+                id: b.id,
+                properties: { id: b.id, name: b.name },
+                geometry: {
+                  type: 'Point',
+                  coordinates: [b.longitude, b.latitude]
+                }
+              }))
+            }}
+            onPress={(e) => {
+              if (e.features && e.features.length > 0) {
+                const feature = e.features[0];
+                const building = buildings.find(b => b.id === feature.properties.id);
+                if (building) handleBuildingPress(building);
+              }
+            }}
           >
-            <View className="w-8 h-8 items-center justify-center">
-              <View 
-                className="w-5 h-5 rounded-full bg-maroon-800 border-2 border-white"
-                style={styles.markerShadow}
-              />
-            </View>
-          </MapboxGL.PointAnnotation>
-        ))}
+            {/* Shadow layer */}
+            <MapboxGL.CircleLayer
+              id="buildings-shadow"
+              style={{
+                circleRadius: 10,
+                circleColor: 'rgba(0, 0, 0, 0.15)',
+                circleTranslate: [1, 2],
+                circleBlur: 0.4,
+              }}
+            />
+            {/* Main circle - maroon like admin */}
+            <MapboxGL.CircleLayer
+              id="buildings-circle"
+              style={{
+                circleRadius: 12,
+                circleColor: '#800000',
+                circleStrokeWidth: 2,
+                circleStrokeColor: '#FFFFFF',
+              }}
+            />
+            {/* Building icon */}
+            <MapboxGL.SymbolLayer
+              id="buildings-icon"
+              style={{
+                iconImage: 'building-15',
+                iconSize: 0.7,
+                iconColor: '#FFFFFF',
+                iconAllowOverlap: true,
+              }}
+            />
+            {/* Building name label */}
+            <MapboxGL.SymbolLayer
+              id="buildings-label"
+              style={{
+                textField: ['get', 'name'],
+                textSize: 11,
+                textFont: ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+                textColor: '#374151',
+                textHaloColor: '#FFFFFF',
+                textHaloWidth: 1.5,
+                textOffset: [0, 1.6],
+                textAnchor: 'top',
+                textMaxWidth: 10,
+                textAllowOverlap: false,
+                textOptional: true,
+              }}
+            />
+          </MapboxGL.ShapeSource>
+        )}
       </MapboxGL.MapView>
 
       {/* Outside Campus Warning */}
@@ -284,13 +281,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  markerShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5,
-  },
+
   centerButton: {
     position: 'absolute',
     bottom: 200,

@@ -47,8 +47,8 @@ const AdminPanel = ({ onLogout }) => {
               <MapPin className="w-6 h-6 text-maroon-900" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">ARound BulSU</h1>
-              <p className="text-xs text-maroon-200">Admin Dashboard</p>
+              <h1 className="text-lg font-bold text-white">ARound BulSU Admin</h1>
+              <p className="text-xs text-maroon-200">Campus Management</p>
             </div>
           </div>
         </div>

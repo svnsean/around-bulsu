@@ -1,14 +1,6 @@
 // App.js
 import "./global.css";
-<<<<<<< HEAD
-<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
-=======
-import React, { useState } from 'react';
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
-import React, { useState, useEffect } from 'react';
->>>>>>> 0846c07 (AR feature done)
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
@@ -16,20 +8,13 @@ import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-naviga
 import { Text, View, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Icon } from './src/components/ui';
+import { NetworkProvider } from './src/context/NetworkContext';
+import { ToastProvider } from './src/components/ui/Toast';
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 0846c07 (AR feature done)
 // Initialize Mapbox at app startup
 import { initializeMapbox } from './src/config/mapbox';
 initializeMapbox();
 
-<<<<<<< HEAD
-=======
->>>>>>> ae1c7e32feebd8fc664b00a4e0e447c5eca6d6f4
-=======
->>>>>>> 0846c07 (AR feature done)
 // Import screens
 import SplashScreen from './src/screens/SplashScreen';
 import NavigateScreen from './src/screens/NavigateScreen';
@@ -111,7 +96,7 @@ const NotificationsScreen = () => (
 // Custom Drawer Content (NativeWind)
 const CustomDrawerContent = (props) => (
   <DrawerContentScrollView {...props} className="flex-1">
-    <View className="bg-maroon-800 px-8 pt-12 pb-8 items-center">
+    <View className="bg-maroon-800 px-8 pt-12 pb-8 items-center mx-3 mt-2 rounded-2xl">
       <View className="w-16 h-16 rounded-2xl bg-white/20 items-center justify-center mb-3">
         <Icon name="compass" size={32} color="#FFFFFF" />
       </View>
@@ -216,22 +201,26 @@ export default function App() {
   // Main app with drawer navigation wrapping tabs
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <Drawer.Navigator
-          drawerContent={(props) => <CustomDrawerContent {...props} />}
-          screenOptions={{
-            headerShown: false,
-            drawerStyle: {
-              backgroundColor: '#fff',
-              width: 280,
-            },
-          }}
-        >
-          <Drawer.Screen name="Main" component={MainTabs} />
-          <Drawer.Screen name="Notifications" component={NotificationsScreen} />
-          <Drawer.Screen name="Settings" component={SettingsScreen} />
-        </Drawer.Navigator>
-      </NavigationContainer>
+      <NetworkProvider>
+        <ToastProvider>
+          <NavigationContainer>
+            <Drawer.Navigator
+              drawerContent={(props) => <CustomDrawerContent {...props} />}
+              screenOptions={{
+                headerShown: false,
+                drawerStyle: {
+                  backgroundColor: '#fff',
+                  width: 280,
+                },
+              }}
+            >
+              <Drawer.Screen name="Main" component={MainTabs} />
+              <Drawer.Screen name="Notifications" component={NotificationsScreen} />
+              <Drawer.Screen name="Settings" component={SettingsScreen} />
+            </Drawer.Navigator>
+          </NavigationContainer>
+        </ToastProvider>
+      </NetworkProvider>
     </SafeAreaProvider>
   );
 }

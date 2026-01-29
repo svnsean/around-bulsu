@@ -10,14 +10,17 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import { Icon } from './ui';
+import * as Haptics from 'expo-haptics';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+const STATUS_BAR_HEIGHT = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 44;
 const TAB_BAR_HEIGHT = 102; // Floating tab bar height (70) + margin (16) + extra padding (16)
-const MENU_BUTTON_HEIGHT = 70; // Space for menu button at top
-const SHEET_MIN_HEIGHT = 100 + TAB_BAR_HEIGHT;
-const SHEET_MAX_HEIGHT = SCREEN_HEIGHT - MENU_BUTTON_HEIGHT; // Go nearly full height but leave room for menu button
+const SHEET_MIN_HEIGHT = 70 + TAB_BAR_HEIGHT; // Compact search bar
+const SHEET_MAX_HEIGHT = SCREEN_HEIGHT - STATUS_BAR_HEIGHT - 20; // Slightly shorter than full screen
 
 const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,17 +76,23 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   });
 
   const expand = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsExpanded(true);
     Animated.spring(sheetHeight, {
       toValue: SHEET_MAX_HEIGHT,
+      friction: 8,
+      tension: 40,
       useNativeDriver: false,
     }).start();
   };
 
   const collapse = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsExpanded(false);
     Animated.spring(sheetHeight, {
       toValue: SHEET_MIN_HEIGHT,
+      friction: 8,
+      tension: 40,
       useNativeDriver: false,
     }).start();
   };
@@ -161,22 +170,30 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   return (
     <Animated.View 
       className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl"
-      style={[{ height: sheetHeight }, styles.containerShadow]}
+      style={[
+        { 
+          height: sheetHeight, 
+          zIndex: 999, 
+          elevation: 999,
+        }, 
+        styles.containerShadow
+      ]}
     >
       {/* Drag Handle */}
-      <View {...panResponder.panHandlers} className="items-center py-4">
+      <View {...panResponder.panHandlers} className="items-center py-3">
         <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
       </View>
 
-      {/* Search Bar */}
+      {/* Search Bar - Taller and narrower */}
       <TouchableOpacity 
-        className="flex-row items-center mx-4 mb-3 px-4 py-2.5 bg-gray-100 rounded-xl border border-gray-200"
+        className="flex-row items-center mx-8 mb-2 px-4 py-3 bg-gray-100 rounded-xl border border-gray-200"
         onPress={expand}
         activeOpacity={1}
       >
         <Icon name="search" size={18} color="#800000" style={{ marginRight: 10 }} />
         <TextInput
           className="flex-1 text-sm text-gray-800"
+          style={{ paddingVertical: 4 }}
           placeholder="Search buildings or rooms..."
           placeholderTextColor="#9CA3AF"
           value={searchQuery}
@@ -186,9 +203,9 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
         {searchQuery.length > 0 && (
           <TouchableOpacity 
             onPress={() => setSearchQuery('')}
-            className="w-7 h-7 items-center justify-center rounded-full bg-gray-200"
+            className="w-6 h-6 items-center justify-center rounded-full bg-gray-200"
           >
-            <Icon name="x" size={14} color="#6B7280" />
+            <Icon name="x" size={12} color="#6B7280" />
           </TouchableOpacity>
         )}
       </TouchableOpacity>

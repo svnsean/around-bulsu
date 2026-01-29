@@ -19,9 +19,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { Magnetometer, Accelerometer } from 'expo-sensors';
 import MapboxGL from '@rnmapbox/maps';
-import { MaterialCommunityIcons, FontAwesome5, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons, FontAwesome5, Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MAPBOX_ACCESS_TOKEN } from '../config/mapbox';
+
+// AsyncStorage key for first-time AR intro
+const AR_INTRO_SHOWN_KEY = '@ar_intro_shown';
 
 // Import shared pathfinding utilities
 import {
@@ -34,6 +38,9 @@ import {
   detectTurn as detectTurnUtil,
   calculateETA as calculateETAUtil
 } from '../lib/pathfinding';
+
+// Import filter utilities
+import { GPSKalmanFilter, CompassFilter, PitchFilter } from '../lib/filters';
 
 // Mapbox is initialized in App.js
 
@@ -59,9 +66,111 @@ try {
   ViroPolyline = viro.ViroPolyline;
   viroAvailable = true;
   console.log('[ViroReact] Successfully loaded AR components');
+  
+  // Register materials for 3D objects
+  ViroMaterials.createMaterials({
+    chevronBlue: {
+      diffuseColor: '#4285F4',
+      lightingModel: 'Constant',
+    },
+    chevronWhite: {
+      diffuseColor: '#FFFFFF',
+      lightingModel: 'Constant',
+    },
+    chevronGlow: {
+      diffuseColor: '#00E5FF',
+      lightingModel: 'Constant',
+      bloomThreshold: 0.2,
+    },
+    destinationRed: {
+      diffuseColor: '#FF4444',
+      lightingModel: 'Blinn',
+    },
+    pathDotCyan: {
+      diffuseColor: '#00E5FF',
+      lightingModel: 'Constant',
+    },
+    turnArrowGold: {
+      diffuseColor: '#FFD700',
+      lightingModel: 'Constant',
+    },
+  });
+  
+  // Register animations for AR elements
+  ViroAnimations.registerAnimations({
+    // Chevron pulse animation
+    chevronFadeIn: {
+      properties: { opacity: 1, scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 },
+      duration: 300,
+      easing: 'EaseOut',
+    },
+    chevronFadeOut: {
+      properties: { opacity: 0, scaleX: 1.1, scaleY: 1.1, scaleZ: 1.1 },
+      duration: 400,
+      easing: 'EaseIn',
+    },
+    chevronPulse: [
+      ['chevronFadeIn', 'chevronFadeOut'],
+    ],
+    // Destination pin bounce
+    pinBounceUp: {
+      properties: { positionY: 0.15 },
+      duration: 500,
+      easing: 'EaseOut',
+    },
+    pinBounceDown: {
+      properties: { positionY: 0 },
+      duration: 500,
+      easing: 'EaseIn',
+    },
+    pinBounce: [
+      ['pinBounceUp', 'pinBounceDown'],
+    ],
+    // Turn arrow pulse
+    turnPulse: {
+      properties: { scaleX: 1.2, scaleY: 1.2, scaleZ: 1.2 },
+      duration: 400,
+      easing: 'EaseInEaseOut',
+    },
+    turnPulseBack: {
+      properties: { scaleX: 1.0, scaleY: 1.0, scaleZ: 1.0 },
+      duration: 400,
+      easing: 'EaseInEaseOut',
+    },
+    turnArrowPulse: [
+      ['turnPulse', 'turnPulseBack'],
+    ],
+  });
+  
 } catch (e) {
   console.warn('ViroReact not available:', e.message);
 }
+
+// 3D Model asset paths (check if files exist)
+let AR_ASSETS = {
+  chevron: null,
+  destinationPin: null,
+  pathDot: null,
+  turnArrow: null,
+};
+
+// Try to load 3D assets (will fail gracefully if not present)
+try {
+  AR_ASSETS.chevron = require('../../assets/3d/arrow_chevron.glb');
+  console.log('[AR Assets] Loaded chevron:', AR_ASSETS.chevron);
+} catch (e) { console.log('[AR Assets] chevron not found:', e.message); }
+try {
+  AR_ASSETS.destinationPin = require('../../assets/3d/destination_pin.glb');
+  console.log('[AR Assets] Loaded destination pin:', AR_ASSETS.destinationPin);
+} catch (e) { console.log('[AR Assets] destination_pin not found:', e.message); }
+try {
+  AR_ASSETS.pathDot = require('../../assets/3d/path_dot.glb');
+  console.log('[AR Assets] Loaded path dot:', AR_ASSETS.pathDot);
+} catch (e) { console.log('[AR Assets] path_dot not found:', e.message); }
+try {
+  AR_ASSETS.turnArrow = require('../../assets/3d/turn_arrow.glb');
+  console.log('[AR Assets] Loaded turn arrow:', AR_ASSETS.turnArrow);
+} catch (e) { console.log('[AR Assets] turn_arrow not found:', e.message); }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAP_MIN_HEIGHT = 220;
@@ -171,121 +280,8 @@ const AnimatedChevrons = ({ direction = 0, isVisible = true }) => {
   );
 };
 
-// ========== GPS Kalman Filter Class ==========
-class GPSKalmanFilter {
-  constructor() {
-    this.lat = null;
-    this.lng = null;
-    this.velocityLat = 0;
-    this.velocityLng = 0;
-    this.accuracy = 10;
-    this.lastTimestamp = null;
-    this.processNoise = 3;
-    this.minAccuracy = 100;
-  }
-  
-  filter(lat, lng, accuracy, timestamp) {
-    if (this.lat === null) {
-      this.lat = lat;
-      this.lng = lng;
-      this.accuracy = accuracy || 10;
-      this.lastTimestamp = timestamp || Date.now();
-      return { lat: this.lat, lng: this.lng };
-    }
-    
-    const now = timestamp || Date.now();
-    const dt = Math.max(0.1, (now - this.lastTimestamp) / 1000);
-    this.lastTimestamp = now;
-    
-    const predictedLat = this.lat + this.velocityLat * dt;
-    const predictedLng = this.lng + this.velocityLng * dt;
-    const predictedAccuracy = this.accuracy + this.processNoise * dt;
-    const measurementAccuracy = Math.min(accuracy || 10, this.minAccuracy);
-    const kalmanGain = predictedAccuracy / (predictedAccuracy + measurementAccuracy);
-    
-    this.lat = predictedLat + kalmanGain * (lat - predictedLat);
-    this.lng = predictedLng + kalmanGain * (lng - predictedLng);
-    this.velocityLat = (this.lat - predictedLat) / dt * 0.5 + this.velocityLat * 0.5;
-    this.velocityLng = (this.lng - predictedLng) / dt * 0.5 + this.velocityLng * 0.5;
-    this.accuracy = (1 - kalmanGain) * predictedAccuracy;
-    
-    return { lat: this.lat, lng: this.lng };
-  }
-  
-  reset() {
-    this.lat = null;
-    this.lng = null;
-    this.velocityLat = 0;
-    this.velocityLng = 0;
-  }
-}
-
-// ========== Compass Low-Pass Filter ==========
-class CompassFilter {
-  constructor(alpha = 0.15) {
-    this.alpha = alpha;
-    this.heading = null;
-    this.history = [];
-    this.historySize = 10;
-  }
-  
-  normalize(angle) {
-    while (angle < 0) angle += 360;
-    while (angle >= 360) angle -= 360;
-    return angle;
-  }
-  
-  angularDifference(from, to) {
-    let diff = to - from;
-    while (diff > 180) diff -= 360;
-    while (diff < -180) diff += 360;
-    return diff;
-  }
-  
-  filter(rawHeading) {
-    rawHeading = this.normalize(rawHeading);
-    
-    if (this.heading === null) {
-      this.heading = rawHeading;
-      this.history = [rawHeading];
-      return this.heading;
-    }
-    
-    this.history.push(rawHeading);
-    if (this.history.length > this.historySize) {
-      this.history.shift();
-    }
-    
-    const sortedHistory = [...this.history].sort((a, b) => a - b);
-    const medianHeading = sortedHistory[Math.floor(sortedHistory.length / 2)];
-    const diff = this.angularDifference(this.heading, medianHeading);
-    this.heading = this.normalize(this.heading + this.alpha * diff);
-    
-    return this.heading;
-  }
-  
-  reset() {
-    this.heading = null;
-    this.history = [];
-  }
-}
-
-// ========== Accelerometer Pitch Filter ==========
-class PitchFilter {
-  constructor(alpha = 0.2) {
-    this.alpha = alpha;
-    this.pitch = 0;
-  }
-  
-  filter(rawPitch) {
-    this.pitch = this.pitch + this.alpha * (rawPitch - this.pitch);
-    return this.pitch;
-  }
-  
-  reset() {
-    this.pitch = 0;
-  }
-}
+// Filter classes are now imported from '../lib/filters.js'
+// GPSKalmanFilter, CompassFilter, PitchFilter
 
 // ========== Local Utility Functions (use imported getDistance, getBearing) ==========
 const gpsToScreenPosition = (targetLat, targetLon, userLat, userLon, heading, distance, pitch = 0) => {
@@ -416,13 +412,14 @@ const ARNavigationScene = (props) => {
 
   // Handle anchor found (surface detected)
   const onAnchorFound = (anchor) => {
-    console.log('[ViroAR] Surface detected:', anchor);
-    if (anchor.type === 'plane' && anchor.alignment === 'horizontal') {
+    console.log('[ViroAR] Anchor found:', anchor);
+    // Set surfaceFound on any anchor detection
+    if (!surfaceFound) {
       setSurfaceFound(true);
-      // Use the detected plane's Y position as ground level
-      if (anchor.position) {
-        setGroundY(anchor.position[1]);
-      }
+    }
+    // Use horizontal plane's Y position as ground level if available
+    if (anchor.type === 'plane' && anchor.alignment === 'horizontal' && anchor.position) {
+      setGroundY(anchor.position[1]);
     }
   };
 
@@ -432,21 +429,28 @@ const ARNavigationScene = (props) => {
     }
   };
 
-  // Loading state - Scanning for surfaces
+  // Auto-enable after tracking is normal (fallback if no anchors detected)
+  React.useEffect(() => {
+    if (trackingState === 'TRACKING_NORMAL' && !surfaceFound) {
+      const timer = setTimeout(() => {
+        console.log('[ViroAR] Auto-enabling AR after tracking normal');
+        setSurfaceFound(true);
+      }, 2000); // 2 second delay after tracking is normal
+      return () => clearTimeout(timer);
+    }
+  }, [trackingState, surfaceFound]);
+
+  // Loading state - Initializing AR
   if (!sceneReady || !userLocation || !building) {
     return (
       <ViroARScene onTrackingUpdated={onInitialized} onAnchorFound={onAnchorFound}>
         <ViroAmbientLight color="#ffffff" intensity={300} />
-        <ViroNode position={[0, 0, -2]}>
+        <ViroNode position={[0, 0, -3]}>
           <ViroText
-            text="📱 Point camera at the ground"
-            position={[0, 0.3, 0]}
-            style={{ fontSize: 20, color: '#FFFFFF', textAlign: 'center' }}
-          />
-          <ViroText
-            text="Scanning for surfaces..."
+            text="Initializing AR..."
             position={[0, 0, 0]}
-            style={{ fontSize: 16, color: '#00E5FF', textAlign: 'center' }}
+            style={{ fontFamily: 'Arial', fontSize: 22, fontWeight: 'bold', color: '#FFFFFF', textAlign: 'center' }}
+            outerStroke={{ type: 'Outline', width: 2, color: '#000000' }}
           />
         </ViroNode>
       </ViroARScene>
@@ -475,21 +479,23 @@ const ARNavigationScene = (props) => {
   };
 
   // Generate chevron positions on the ground
+  // Generate chevron positions on the ground - Google Maps Live View style
   const generateGroundChevrons = () => {
     const chevrons = [];
-    const count = 5;
-    const spacing = 0.8;
+    const count = 4; // Reduced count for cleaner look
+    const spacing = 1.8; // Increased spacing between chevrons
+    const startDistance = 3.5; // Start further from camera
     const direction = (relativeDirection || 0) * Math.PI / 180;
     
     for (let i = 0; i < count; i++) {
-      const distance = 1.5 + (i * spacing);
+      const distance = startDistance + (i * spacing);
       const x = Math.sin(direction) * distance;
       const z = -Math.cos(direction) * distance;
-      const opacity = 1 - (i * 0.15);
-      const scale = 1 - (i * 0.1);
+      const opacity = Math.max(0.4, 1 - (i * 0.2));
+      const scale = Math.max(0.5, 1 - (i * 0.12));
       
       chevrons.push({
-        position: [x, groundY + 0.01, z], // Slightly above ground
+        position: [x, groundY + 0.05, z],
         opacity,
         scale,
         index: i,
@@ -500,6 +506,103 @@ const ARNavigationScene = (props) => {
 
   const groundChevrons = generateGroundChevrons();
 
+  // Helper to render chevron - uses 3D model only (no emoji fallback)
+  const renderChevron = (chevron, index) => {
+    // Only render if 3D asset is available
+    if (!AR_ASSETS.chevron) return null;
+    
+    const chevronRotation = [-90, -(relativeDirection || 0), 0];
+    const baseScale = 0.7;
+    const chevronScale = [chevron.scale * baseScale, chevron.scale * baseScale, chevron.scale * baseScale];
+    
+    return (
+      <ViroNode key={`chevron-${index}`} position={chevron.position}>
+        <Viro3DObject
+          source={AR_ASSETS.chevron}
+          type="GLB"
+          rotation={chevronRotation}
+          scale={chevronScale}
+          materials={['chevronBlue']}
+          onLoadEnd={() => console.log(`[AR] Chevron ${index} loaded`)}
+          onError={(event) => console.warn(`[AR] Chevron ${index} error:`, event.nativeEvent)}
+        />
+      </ViroNode>
+    );
+  };
+
+  // Helper to render destination pin - uses 3D model only (no emoji fallback)
+  const renderDestinationPin = () => {
+    // Only render if 3D asset is available and within visible range
+    if (!AR_ASSETS.destinationPin) return null;
+    if (destARPos.realDistance >= 100 || Math.abs(relativeDirection) >= 70) return null;
+    
+    const pinPosition = [destARPos.x * 0.3, groundY + 1.5, destARPos.z * 0.3];
+    
+    return (
+      <ViroNode position={pinPosition}>
+        <Viro3DObject
+          source={AR_ASSETS.destinationPin}
+          type="GLB"
+          scale={[0.6, 0.6, 0.6]}
+          materials={['destinationRed']}
+          animation={{ name: 'pinBounce', run: true, loop: true }}
+          onLoadEnd={() => console.log('[AR] Destination pin loaded')}
+          onError={(event) => console.warn('[AR] Destination pin error:', event.nativeEvent)}
+        />
+        <ViroText
+          text={building.name}
+          position={[0, 1.0, 0]}
+          style={{ fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', color: '#FFFFFF', textAlign: 'center' }}
+          outerStroke={{ type: 'Outline', width: 2, color: '#000000' }}
+        />
+        <ViroText
+          text={`${Math.round(destARPos.realDistance)}m`}
+          position={[0, 0.7, 0]}
+          style={{ fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#00E5FF', textAlign: 'center' }}
+          outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
+        />
+      </ViroNode>
+    );
+  };
+
+  // Helper to render turn indicator - uses 3D model only (no emoji fallback)
+  const renderTurnIndicator = () => {
+    // Only render if 3D asset is available
+    if (!AR_ASSETS.turnArrow) return null;
+    if (!nextTurn || nextTurn.distance >= 50) return null;
+    
+    const isLeft = nextTurn.type.includes('left');
+    const turnPosition = [isLeft ? -1.2 : 1.2, groundY + 1.2, -2.5];
+    const turnRotation = isLeft ? [0, 90, 0] : [0, -90, 0];
+    
+    return (
+      <ViroNode position={turnPosition}>
+        <Viro3DObject
+          source={AR_ASSETS.turnArrow}
+          type="GLB"
+          rotation={turnRotation}
+          scale={[0.5, 0.5, 0.5]}
+          materials={['turnArrowGold']}
+          animation={{ name: 'turnArrowPulse', run: true, loop: true }}
+          onLoadEnd={() => console.log('[AR] Turn arrow loaded')}
+          onError={(event) => console.warn('[AR] Turn arrow error:', event.nativeEvent)}
+        />
+        <ViroText
+          text={isLeft ? 'Turn Left' : 'Turn Right'}
+          position={[0, 0.5, 0]}
+          style={{ fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#FFD700', textAlign: 'center' }}
+          outerStroke={{ type: 'Outline', width: 2, color: '#000000' }}
+        />
+        <ViroText
+          text={`${nextTurn.distance}m`}
+          position={[0, 0.2, 0]}
+          style={{ fontFamily: 'Arial', fontSize: 12, color: '#FFFFFF', textAlign: 'center' }}
+          outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
+        />
+      </ViroNode>
+    );
+  };
+
   return (
     <ViroARScene 
       onTrackingUpdated={onInitialized}
@@ -509,159 +612,67 @@ const ARNavigationScene = (props) => {
       {/* Lighting */}
       <ViroAmbientLight color="#ffffff" intensity={500} />
 
-      {/* ===== SURFACE SCANNING INDICATOR ===== */}
-      {!surfaceFound && trackingState !== 'TRACKING_NORMAL' && (
-        <ViroNode position={[0, 0, -2]}>
+      {/* ===== SURFACE SCANNING INDICATOR (shows until surfaceFound is true) ===== */}
+      {!surfaceFound && (
+        <ViroNode position={[0, 0.3, -2.5]}>
           <ViroText
-            text="🔍 Scanning ground surface..."
-            style={{ fontSize: 18, color: '#FFD700', textAlign: 'center' }}
+            text={trackingState === 'TRACKING_NORMAL' ? "Almost ready..." : "Scanning Surface"}
+            position={[0, 0.2, 0]}
+            style={{ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', color: '#FFD700', textAlign: 'center' }}
+            outerStroke={{ type: 'Outline', width: 2, color: '#000000' }}
+          />
+          <ViroText
+            text={trackingState === 'TRACKING_NORMAL' ? "Preparing navigation..." : "Point camera at ground"}
+            position={[0, -0.1, 0]}
+            style={{ fontFamily: 'Arial', fontSize: 14, color: '#FFFFFF', textAlign: 'center' }}
+            outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
+          />
+          {trackingState !== 'TRACKING_NORMAL' && (
+            <ViroText
+              text="and move slowly"
+              position={[0, -0.35, 0]}
+              style={{ fontFamily: 'Arial', fontSize: 14, color: '#FFFFFF', textAlign: 'center' }}
+              outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
+            />
+          )}
+        </ViroNode>
+      )}
+
+      {/* ===== GROUND-ANCHORED CHEVRON ARROWS (Google Maps Live View Style) ===== */}
+      {surfaceFound && groundChevrons.map(renderChevron)}
+
+      {/* ===== PATH LINE ON GROUND ===== */}
+      {surfaceFound && pathDots.length > 1 && (
+        <ViroPolyline
+          position={[0, groundY + 0.03, 0]}
+          points={pathDots.map(d => d.position)}
+          thickness={0.12}
+          materials={['pathDotCyan']}
+        />
+      )}
+
+      {/* ===== DESTINATION PIN ===== */}
+      {surfaceFound && renderDestinationPin()}
+
+      {/* ===== TURN INDICATOR ===== */}
+      {surfaceFound && renderTurnIndicator()}
+
+      {/* ===== TRACKING STATUS ===== */}
+      {trackingState === 'TRACKING_LIMITED' && surfaceFound && (
+        <ViroNode position={[0, 1.5, -3]}>
+          <ViroText
+            text="Limited Tracking"
+            position={[0, 0.15, 0]}
+            style={{ fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#FFD700', textAlign: 'center' }}
+            outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
           />
           <ViroText
             text="Move phone slowly"
-            position={[0, -0.3, 0]}
-            style={{ fontSize: 14, color: '#FFFFFF', textAlign: 'center' }}
+            position={[0, -0.1, 0]}
+            style={{ fontFamily: 'Arial', fontSize: 12, color: '#FFFFFF', textAlign: 'center' }}
+            outerStroke={{ type: 'Outline', width: 1, color: '#000000' }}
           />
         </ViroNode>
-      )}
-
-      {/* ===== GROUND-ANCHORED CHEVRON ARROWS (Like Google Maps) ===== */}
-      {groundChevrons.map((chevron, index) => (
-        <ViroNode key={`chevron-${index}`} position={chevron.position}>
-          {/* Main chevron arrow on ground */}
-          <ViroText
-            text="▲"
-            rotation={[-90, -(relativeDirection || 0), 0]}
-            scale={[chevron.scale * 1.5, chevron.scale * 1.5, chevron.scale * 1.5]}
-            style={{ 
-              fontSize: 80, 
-              color: `rgba(255, 255, 255, ${chevron.opacity})`,
-              textAlign: 'center',
-            }}
-          />
-          {/* Glow effect */}
-          <ViroText
-            text="▲"
-            position={[0, -0.01, 0]}
-            rotation={[-90, -(relativeDirection || 0), 0]}
-            scale={[chevron.scale * 1.6, chevron.scale * 1.6, chevron.scale * 1.6]}
-            style={{ 
-              fontSize: 80, 
-              color: `rgba(66, 133, 244, ${chevron.opacity * 0.5})`,
-              textAlign: 'center',
-            }}
-          />
-        </ViroNode>
-      ))}
-
-      {/* ===== PATH DOTS ON GROUND ===== */}
-      {pathDots.map((dot, index) => (
-        <ViroNode key={`dot-${index}`} position={[dot.position[0], groundY + 0.02, dot.position[2]]}>
-          <ViroText
-            text="●"
-            rotation={[-90, 0, 0]}
-            scale={[dot.scale, dot.scale, dot.scale]}
-            style={{ 
-              fontSize: 40, 
-              color: index === 0 ? '#00E5FF' : '#4FC3F7', 
-              textAlign: 'center',
-            }}
-          />
-        </ViroNode>
-      ))}
-
-      {/* ===== BUILDING NAME LABEL (Floating) ===== */}
-      <ViroNode position={[0, 1.2, -3]}>
-        <ViroText
-          text={building.name}
-          style={{ 
-            fontSize: 26, 
-            color: '#FFFFFF', 
-            textAlign: 'center',
-            fontWeight: 'bold',
-          }}
-        />
-      </ViroNode>
-
-      {/* ===== DISTANCE INDICATOR ===== */}
-      <ViroNode position={[0, groundY + 0.5, -2]}>
-        <ViroText
-          text={`${currentDistance || '--'}m`}
-          style={{ 
-            fontSize: 32, 
-            color: '#FFFFFF', 
-            textAlign: 'center',
-            fontWeight: 'bold',
-          }}
-        />
-      </ViroNode>
-
-      {/* ===== TURN INDICATOR (Large, visible) ===== */}
-      {nextTurn && nextTurn.distance < 50 && (
-        <ViroNode position={[nextTurn.type.includes('left') ? -0.8 : 0.8, groundY + 1, -1.5]}>
-          <ViroText
-            text={getTurnIcon(nextTurn.type)}
-            scale={[2, 2, 2]}
-            style={{ 
-              fontSize: 60, 
-              color: '#FFD700', 
-              textAlign: 'center',
-            }}
-          />
-          <ViroText
-            text={`In ${nextTurn.distance}m`}
-            position={[0, -0.4, 0]}
-            style={{ 
-              fontSize: 16, 
-              color: '#FFD700', 
-              textAlign: 'center',
-            }}
-          />
-        </ViroNode>
-      )}
-
-      {/* ===== DESTINATION PIN (When visible) ===== */}
-      {destARPos.realDistance < 100 && Math.abs(relativeDirection) < 70 && (
-        <ViroNode position={[destARPos.x * 0.3, groundY + 2, destARPos.z * 0.3]}>
-          <ViroText
-            text="📍"
-            scale={[2, 2, 2]}
-            style={{ 
-              fontSize: 50, 
-              textAlign: 'center',
-            }}
-          />
-          <ViroText
-            text={building.name}
-            position={[0, -0.5, 0]}
-            style={{ 
-              fontSize: 18, 
-              color: '#FFFFFF', 
-              textAlign: 'center',
-            }}
-          />
-          <ViroText
-            text={`${Math.round(destARPos.realDistance)}m`}
-            position={[0, -0.8, 0]}
-            style={{ 
-              fontSize: 14, 
-              color: '#FF6B6B', 
-              textAlign: 'center',
-            }}
-          />
-        </ViroNode>
-      )}
-
-      {/* ===== TRACKING STATUS ===== */}
-      {trackingState === 'TRACKING_LIMITED' && (
-        <ViroText
-          text="⚠ Limited tracking - Move slowly"
-          position={[0, 2, -3]}
-          style={{ 
-            fontSize: 14, 
-            color: '#FFD700', 
-            textAlign: 'center',
-          }}
-        />
       )}
     </ViroARScene>
   );
@@ -719,6 +730,11 @@ const ARNavigationScreen = ({ route, navigation }) => {
   // Always use 3D AR mode
   const [viroError, setViroError] = useState(false);
   
+  // AR Intro screen state
+  const [showARIntro, setShowARIntro] = useState(true);
+  const [checkingIntroStatus, setCheckingIntroStatus] = useState(true);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  
   const isMountedRef = useRef(true);
   const celebrationAnim = useRef(new Animated.Value(0)).current;
   const viroPropsRef = useRef({}); // Store Viro props in ref to avoid re-renders
@@ -727,6 +743,35 @@ const ARNavigationScreen = ({ route, navigation }) => {
   const compassFilterRef = useRef(new CompassFilter(0.12));
   const pitchFilterRef = useRef(new PitchFilter(0.15));
   const lastHapticRef = useRef(0);
+  
+  // Check if AR intro has been shown before
+  useEffect(() => {
+    const checkIntroStatus = async () => {
+      try {
+        const hasSeenIntro = await AsyncStorage.getItem(AR_INTRO_SHOWN_KEY);
+        if (hasSeenIntro === 'true') {
+          setShowARIntro(false);
+        }
+      } catch (error) {
+        console.warn('[AR Intro] Error checking intro status:', error);
+      } finally {
+        setCheckingIntroStatus(false);
+      }
+    };
+    checkIntroStatus();
+  }, []);
+
+  // Handle AR intro continue
+  const handleARIntroContinue = async () => {
+    if (dontShowAgain) {
+      try {
+        await AsyncStorage.setItem(AR_INTRO_SHOWN_KEY, 'true');
+      } catch (error) {
+        console.warn('[AR Intro] Error saving intro status:', error);
+      }
+    }
+    setShowARIntro(false);
+  };
   
   useEffect(() => {
     isMountedRef.current = true;
@@ -961,6 +1006,111 @@ const ARNavigationScreen = ({ route, navigation }) => {
     },
   });
 
+  // ========== AR INTRO SCREEN (First-time use) ==========
+  if (checkingIntroStatus) {
+    return (
+      <View style={styles.introContainer}>
+        <LinearGradient colors={['#800000', '#4d0000', '#1a0000']} style={StyleSheet.absoluteFill} />
+        <MaterialCommunityIcons name="cube-scan" size={50} color="#FFD700" />
+        <Text style={styles.introLoadingText}>Loading AR...</Text>
+      </View>
+    );
+  }
+
+  if (showARIntro) {
+    return (
+      <View style={styles.introContainer}>
+        <LinearGradient colors={['#800000', '#4d0000', '#1a0000']} style={StyleSheet.absoluteFill} />
+        
+        {/* Header */}
+        <View style={styles.introHeader}>
+          <MaterialCommunityIcons name="cube-scan" size={60} color="#FFD700" />
+          <Text style={styles.introTitle}>AR Navigation</Text>
+          <Text style={styles.introSubtitle}>Before you begin</Text>
+        </View>
+
+        {/* Info Cards */}
+        <View style={styles.introCardsContainer}>
+          {/* How to Use */}
+          <View style={styles.introCard}>
+            <View style={[styles.introCardIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+              <Ionicons name="phone-portrait-outline" size={24} color="#FFD700" />
+            </View>
+            <View style={styles.introCardContent}>
+              <Text style={styles.introCardTitle}>How to Use</Text>
+              <Text style={styles.introCardText}>
+                Point your camera at the ground to detect surfaces, then follow the blue arrows to the destination pin.
+              </Text>
+            </View>
+          </View>
+
+          {/* Stay Safe */}
+          <View style={styles.introCard}>
+            <View style={[styles.introCardIcon, { backgroundColor: 'rgba(128, 0, 0, 0.25)' }]}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={24} color="#FF6B6B" />
+            </View>
+            <View style={styles.introCardContent}>
+              <Text style={styles.introCardTitle}>Stay Safe</Text>
+              <Text style={styles.introCardText}>
+                Watch your step and surroundings. Do not use the app while crossing roads or in hazardous areas.
+              </Text>
+            </View>
+          </View>
+
+          {/* Accuracy */}
+          <View style={styles.introCard}>
+            <View style={[styles.introCardIcon, { backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}>
+              <MaterialCommunityIcons name="crosshairs-gps" size={24} color="#FFD700" />
+            </View>
+            <View style={styles.introCardContent}>
+              <Text style={styles.introCardTitle}>Accuracy</Text>
+              <Text style={styles.introCardText}>
+                GPS may be less accurate near tall buildings or indoors. Always verify your location using visual landmarks.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Don't show again checkbox */}
+        <TouchableOpacity 
+          style={styles.introCheckboxContainer}
+          onPress={() => setDontShowAgain(!dontShowAgain)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.introCheckbox, dontShowAgain && styles.introCheckboxChecked, dontShowAgain && { backgroundColor: '#FFD700', borderColor: '#FFD700' }]}>
+            {dontShowAgain && <Ionicons name="checkmark" size={16} color="#800000" />}
+          </View>
+          <Text style={styles.introCheckboxLabel}>Don't show this again</Text>
+        </TouchableOpacity>
+
+        {/* Continue Button */}
+        <TouchableOpacity 
+          style={styles.introContinueButton}
+          onPress={handleARIntroContinue}
+          activeOpacity={0.8}
+        >
+          <LinearGradient 
+            colors={['#FFD700', '#FFA500']} 
+            style={styles.introContinueGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          >
+            <Text style={[styles.introContinueText, { color: '#800000' }]}>I Understand, Continue</Text>
+            <MaterialCommunityIcons name="arrow-right" size={20} color="#800000" />
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Back button */}
+        <TouchableOpacity 
+          style={styles.introBackButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.introBackText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // Loading Screen - waiting for permissions
   if (!permission) {
     return (
@@ -1069,40 +1219,47 @@ const ARNavigationScreen = ({ route, navigation }) => {
         <CameraView style={StyleSheet.absoluteFillObject} facing="back" />
       )}
 
-      {/* ===== GOOGLE MAPS LIVE VIEW STYLE UI OVERLAY (Both modes) ===== */}
+      {/* ===== GOOGLE MAPS LIVE VIEW STYLE UI OVERLAY ===== */}
+      {/* In ViroReact mode: Show minimal HUD only (no duplicate AR elements) */}
+      {/* In fallback mode: Show full 2D overlay */}
       <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-        {/* Animated Chevron Arrows */}
-        <View style={styles.chevronOverlay}>
-          <AnimatedChevrons 
-            direction={getRelativeDirection()} 
-            isVisible={!hasArrived && currentDistance > 10}
-          />
-        </View>
+        
+        {/* Animated Chevron Arrows - ONLY in fallback mode (ViroReact renders its own) */}
+        {(!viroAvailable || viroError) && (
+          <View style={styles.chevronOverlay}>
+            <AnimatedChevrons 
+              direction={getRelativeDirection()} 
+              isVisible={!hasArrived && currentDistance > 10}
+            />
+          </View>
+        )}
 
-        {/* Street/Building Name Label */}
-        {building && (
+        {/* Street/Building Name Label - ONLY in fallback mode */}
+        {(!viroAvailable || viroError) && building && (
           <View style={styles.streetLabel}>
             <Text style={styles.streetLabelText}>{building.name}</Text>
           </View>
         )}
 
-        {/* Distance Badge at bottom center */}
-        <View style={styles.bottomInfoContainer}>
-          <View style={styles.distanceBadgeLarge}>
-            <Text style={styles.distanceValueLarge}>{currentDistance || '--'}m</Text>
-          </View>
-          
-          {/* ETA Badge */}
-          {eta && (
-            <View style={styles.etaBadgeSmall}>
-              <MaterialCommunityIcons name="walk" size={16} color="#FFFFFF" />
-              <Text style={styles.etaTextSmall}>{eta}</Text>
+        {/* Distance Badge at bottom center - ONLY in fallback mode */}
+        {(!viroAvailable || viroError) && (
+          <View style={styles.bottomInfoContainer}>
+            <View style={styles.distanceBadgeLarge}>
+              <Text style={styles.distanceValueLarge}>{currentDistance || '--'}m</Text>
             </View>
-          )}
-        </View>
+            
+            {/* ETA Badge */}
+            {eta && (
+              <View style={styles.etaBadgeSmall}>
+                <MaterialCommunityIcons name="walk" size={16} color="#FFFFFF" />
+                <Text style={styles.etaTextSmall}>{eta}</Text>
+              </View>
+            )}
+          </View>
+        )}
 
-        {/* Turn Instruction Banner */}
-        {nextTurn && nextTurn.distance < 60 && (
+        {/* Turn Instruction Banner - ONLY in fallback mode */}
+        {(!viroAvailable || viroError) && nextTurn && nextTurn.distance < 60 && (
           <View style={styles.turnBannerOverlay}>
             <MaterialCommunityIcons 
               name={nextTurn.type === 'left' ? 'arrow-left-top-bold' : 
@@ -1120,6 +1277,19 @@ const ARNavigationScreen = ({ route, navigation }) => {
                  nextTurn.type === 'slight-right' ? 'Slight Right' : 'Continue'}
               </Text>
               <Text style={styles.turnDistanceText}>in {nextTurn.distance}m</Text>
+            </View>
+          </View>
+        )}
+        
+        {/* ===== MINIMAL HUD FOR VIROREACT MODE ===== */}
+        {/* Distance + ETA (compact, bottom) - ViroReact mode only */}
+        {viroAvailable && !viroError && (
+          <View style={styles.viroliveHUD}>
+            <View style={styles.viroliveDistanceBadge}>
+              <Text style={styles.viroliveDistanceText}>{currentDistance || '--'}m</Text>
+              {eta && (
+                <Text style={styles.viroliveEtaText}> · {eta}</Text>
+              )}
             </View>
           </View>
         )}
@@ -1166,18 +1336,6 @@ const ARNavigationScreen = ({ route, navigation }) => {
         </View>
       )}
 
-      {/* Top Left: Compass HUD */}
-      <View style={styles.topLeftHUD}>
-        <View style={styles.compassPanel}>
-          <Text style={styles.compassDirection}>
-            {heading < 45 || heading >= 315 ? 'N' : 
-             heading < 135 ? 'E' : 
-             heading < 225 ? 'S' : 'W'}
-          </Text>
-          <Text style={styles.compassDegrees}>{Math.round(heading)}°</Text>
-        </View>
-      </View>
-
       {/* ========== Shared UI Elements (both modes) ========== */}
 
       {/* Top Right: Stop Button */}
@@ -1185,12 +1343,6 @@ const ARNavigationScreen = ({ route, navigation }) => {
         <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
         <Text style={styles.stopButtonText}>Stop</Text>
       </TouchableOpacity>
-
-      {/* AR Live Badge */}
-      <View style={styles.arBadge}>
-        <View style={[styles.arDot, viroAvailable && !viroError && styles.arDot3D]} />
-        <Text style={styles.arBadgeText}>{viroAvailable && !viroError ? '3D AR' : 'AR'}</Text>
-      </View>
 
       {/* Pull-up Map */}
       <Animated.View 
@@ -1664,6 +1816,156 @@ const styles = StyleSheet.create({
   },
   elevatedButton: { 
     elevation: 5 
+  },
+  
+  // ===== VIROREACT MINIMAL HUD STYLES =====
+  // Google Live View style - minimal overlay, let AR do the work
+  viroliveHUD: {
+    position: 'absolute',
+    bottom: 240,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  viroliveDistanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  viroliveDistanceText: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  viroliveEtaText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  
+  // ===== AR INTRO SCREEN STYLES =====
+  introContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
+  introLoadingText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  introHeader: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  introTitle: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginTop: 16,
+    letterSpacing: 0.5,
+  },
+  introSubtitle: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
+    marginTop: 8,
+  },
+  introCardsContainer: {
+    width: '100%',
+    gap: 16,
+  },
+  introCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  introCardIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(66, 133, 244, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  introCardContent: {
+    flex: 1,
+  },
+  introCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  introCardText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  introCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 28,
+    paddingVertical: 8,
+  },
+  introCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  introCheckboxChecked: {
+    backgroundColor: '#4285F4',
+    borderColor: '#4285F4',
+  },
+  introCheckboxLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 15,
+  },
+  introContinueButton: {
+    width: '100%',
+    marginTop: 24,
+    borderRadius: 14,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#4285F4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  introContinueGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  introContinueText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  introBackButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  introBackText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 15,
   },
 });
 
