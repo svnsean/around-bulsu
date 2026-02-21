@@ -1,15 +1,23 @@
 // src/screens/NavigateScreen.js
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Alert, ActivityIndicator, Text, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { View, Alert, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { DrawerActions } from '@react-navigation/native';
 import { supabase, subscribeToTable } from '../supabase';
 import SearchBottomSheet from '../components/SearchBottomSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
+import { BULSU_COLORS } from '../components/ui/BuildingMarker';
 
 // Mapbox is initialized in App.js via initializeMapbox()
+
+// Zoom thresholds
+const CLUSTER_MAX_ZOOM = 14; // Clusters won't form above this zoom
+const LABEL_MIN_ZOOM = 15;   // Labels only show at this zoom and higher
+
+// Building marker icon (512x512 PNG)
+const buildingMarkerIcon = require('../../assets/images/building-marker.png');
 
 const NavigateScreen = ({ navigation }) => {
   const [userLocation, setUserLocation] = useState(null);
@@ -20,10 +28,28 @@ const NavigateScreen = ({ navigation }) => {
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
-  const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const [currentZoom, setCurrentZoom] = useState(17);
   const bottomSheetRef = useRef(null);
   const mapRef = useRef(null);
   const cameraRef = useRef(null);
+
+  // Memoized GeoJSON for clustering
+  const buildingsGeoJSON = useMemo(() => ({
+    type: 'FeatureCollection',
+    features: buildings.map(b => ({
+      type: 'Feature',
+      id: b.id,
+      properties: { 
+        id: b.id, 
+        name: b.name,
+        cluster: false 
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [b.longitude, b.latitude]
+      }
+    }))
+  }), [buildings]);
 
   // Location tracking
   useEffect(() => {
@@ -87,7 +113,6 @@ const NavigateScreen = ({ navigation }) => {
 
   // Handle building pin click
   const handleBuildingPress = (building) => {
-    setSelectedBuilding(building);
     const userCoords = userLocation
       ? [userLocation.longitude, userLocation.latitude]
       : null;
@@ -125,6 +150,36 @@ const NavigateScreen = ({ navigation }) => {
     }
   };
 
+  // Handle zoom level changes for conditional rendering
+  const handleRegionChange = useCallback((feature) => {
+    if (feature?.properties?.zoomLevel) {
+      setCurrentZoom(feature.properties.zoomLevel);
+    }
+  }, []);
+
+  // Handle cluster press - animate zoom to expand
+  const handleClusterPress = useCallback(async (feature) => {
+    if (!feature?.geometry?.coordinates || !cameraRef.current) return;
+    
+    const [lng, lat] = feature.geometry.coordinates;
+    const clusterId = feature.properties?.cluster_id;
+    const pointCount = feature.properties?.point_count || 0;
+    
+    // Calculate zoom level based on cluster size
+    // Smaller clusters need less zoom to expand
+    let targetZoom = currentZoom + 2;
+    if (pointCount > 10) targetZoom = currentZoom + 3;
+    if (pointCount > 20) targetZoom = currentZoom + 4;
+    
+    // Animate to cluster location with increased zoom
+    cameraRef.current.setCamera({
+      centerCoordinate: [lng, lat],
+      zoomLevel: Math.min(targetZoom, 19),
+      animationDuration: 500,
+      animationMode: 'flyTo'
+    });
+  }, [currentZoom]);
+
   return (
     <View className="flex-1 bg-white">
       {/* Loading Overlay */}
@@ -159,6 +214,7 @@ const NavigateScreen = ({ navigation }) => {
         onDidFailLoadingMap={(error) => {
           console.error('[Map] Failed to load map:', error);
         }}
+        onRegionDidChange={handleRegionChange}
       >
         <MapboxGL.Camera 
           ref={cameraRef}
@@ -172,75 +228,102 @@ const NavigateScreen = ({ navigation }) => {
           showsUserHeadingIndicator={true}
         />
 
-        {/* Building Markers - Matching Admin MapEditor style */}
+        {/* Register custom building marker image */}
+        <MapboxGL.Images images={{ 'building-marker': buildingMarkerIcon }} />
+
+        {/* Clustered Building Source with Native Mapbox Clustering */}
         {mapReady && buildings.length > 0 && (
           <MapboxGL.ShapeSource
-            id="buildings-source"
-            shape={{
-              type: 'FeatureCollection',
-              features: buildings.map(b => ({
-                type: 'Feature',
-                id: b.id,
-                properties: { id: b.id, name: b.name },
-                geometry: {
-                  type: 'Point',
-                  coordinates: [b.longitude, b.latitude]
-                }
-              }))
-            }}
+            id="buildings-clustered-source"
+            shape={buildingsGeoJSON}
+            cluster={true}
+            clusterRadius={50}
+            clusterMaxZoomLevel={CLUSTER_MAX_ZOOM}
             onPress={(e) => {
-              if (e.features && e.features.length > 0) {
-                const feature = e.features[0];
+              if (!e.features || e.features.length === 0) return;
+              
+              const feature = e.features[0];
+              
+              // Check if it's a cluster
+              if (feature.properties?.cluster) {
+                handleClusterPress(feature);
+              } else {
+                // Individual building marker
                 const building = buildings.find(b => b.id === feature.properties.id);
                 if (building) handleBuildingPress(building);
               }
             }}
           >
-            {/* Shadow layer */}
+            {/* Cluster circles - BulSU maroon with gold border */}
             <MapboxGL.CircleLayer
-              id="buildings-shadow"
+              id="clusters"
+              filter={['has', 'point_count']}
               style={{
-                circleRadius: 10,
-                circleColor: 'rgba(0, 0, 0, 0.15)',
-                circleTranslate: [1, 2],
-                circleBlur: 0.4,
+                circleColor: BULSU_COLORS.maroon,
+                circleRadius: [
+                  'step',
+                  ['get', 'point_count'],
+                  20,   // Base size for small clusters
+                  5, 25,  // 5+ points = 25px
+                  10, 30, // 10+ points = 30px
+                  20, 35  // 20+ points = 35px
+                ],
+                circleStrokeWidth: 3,
+                circleStrokeColor: BULSU_COLORS.gold,
               }}
             />
-            {/* Main circle - maroon like admin */}
-            <MapboxGL.CircleLayer
-              id="buildings-circle"
-              style={{
-                circleRadius: 12,
-                circleColor: '#800000',
-                circleStrokeWidth: 2,
-                circleStrokeColor: '#FFFFFF',
-              }}
-            />
-            {/* Building icon */}
+            
+            {/* Cluster count text */}
             <MapboxGL.SymbolLayer
-              id="buildings-icon"
+              id="cluster-count"
+              filter={['has', 'point_count']}
               style={{
-                iconImage: 'building-15',
-                iconSize: 0.7,
-                iconColor: '#FFFFFF',
+                textField: ['get', 'point_count_abbreviated'],
+                textSize: 14,
+                textColor: '#FFFFFF',
+                textFont: ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+                textAllowOverlap: true,
+                textIgnorePlacement: true,
+              }}
+            />
+
+            {/* Unclustered building markers - white circle background */}
+            <MapboxGL.CircleLayer
+              id="unclustered-circle"
+              filter={['!', ['has', 'point_count']]}
+              style={{
+                circleColor: '#FFFFFF',
+                circleRadius: 16,
+                circleStrokeWidth: 2.5,
+                circleStrokeColor: BULSU_COLORS.maroon,
+                circlePitchAlignment: 'map',
+              }}
+            />
+
+            {/* Unclustered building markers - icon and label combined in one layer */}
+            <MapboxGL.SymbolLayer
+              id="unclustered-buildings"
+              filter={['!', ['has', 'point_count']]}
+              style={{
+                // Icon settings
+                iconImage: 'building-marker',
+                iconSize: 0.04,
                 iconAllowOverlap: true,
-              }}
-            />
-            {/* Building name label */}
-            <MapboxGL.SymbolLayer
-              id="buildings-label"
-              style={{
+                iconIgnorePlacement: true,
+                // Text/label settings - combined in same layer to avoid collision issues
                 textField: ['get', 'name'],
                 textSize: 11,
                 textFont: ['DIN Pro Medium', 'Arial Unicode MS Regular'],
                 textColor: '#374151',
                 textHaloColor: '#FFFFFF',
                 textHaloWidth: 1.5,
-                textOffset: [0, 1.6],
+                textOffset: [0, 2.2],
                 textAnchor: 'top',
                 textMaxWidth: 10,
                 textAllowOverlap: false,
                 textOptional: true,
+                // Use textOpacity with zoom step to show labels only at zoom >= LABEL_MIN_ZOOM
+                textOpacity: ['step', ['zoom'], 0, LABEL_MIN_ZOOM, 1],
               }}
             />
           </MapboxGL.ShapeSource>
@@ -281,7 +364,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-
   centerButton: {
     position: 'absolute',
     bottom: 200,
@@ -291,23 +373,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     elevation: 5
   },
-  warningBanner: {
-    position: 'absolute',
-    top: 100,
-    left: 16,
-    right: 16,
-    backgroundColor: '#f59e0b',
-    padding: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8
-  },
-  warningText: {
-    color: '#fff',
-    fontWeight: '600'
-  }
 });
 
 export default NavigateScreen;

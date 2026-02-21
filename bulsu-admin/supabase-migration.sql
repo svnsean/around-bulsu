@@ -18,6 +18,8 @@ DROP TABLE IF EXISTS blockages CASCADE;
 DROP TABLE IF EXISTS emergency_contacts CASCADE;
 DROP TABLE IF EXISTS announcements CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
+DROP TABLE IF EXISTS user_fcm_tokens CASCADE;
+DROP TABLE IF EXISTS alerts CASCADE;
 
 -- =====================================================
 -- 1. BUILDINGS TABLE
@@ -140,6 +142,39 @@ CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications (type);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications (created_at DESC);
 
 -- =====================================================
+-- 9. USER FCM TOKENS TABLE (Push notification device tokens)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS user_fcm_tokens (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  token TEXT UNIQUE NOT NULL,
+  device_info JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_token ON user_fcm_tokens (token);
+CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_updated ON user_fcm_tokens (updated_at DESC);
+
+-- =====================================================
+-- 10. ALERTS TABLE (Emergency alerts sent via push)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS alerts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  message TEXT,
+  severity TEXT DEFAULT 'critical',
+  is_active BOOLEAN DEFAULT true,
+  sent_by TEXT DEFAULT 'admin',
+  recipient_count INTEGER DEFAULT 0,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_active ON alerts (is_active);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts (severity);
+CREATE INDEX IF NOT EXISTS idx_alerts_sent ON alerts (sent_at DESC);
+
+-- =====================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- =====================================================
 
@@ -152,6 +187,8 @@ ALTER TABLE blockages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE emergency_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_fcm_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 
 -- Public read access for all tables (mobile app needs to read)
 CREATE POLICY "Public read access" ON buildings FOR SELECT USING (true);
@@ -162,6 +199,7 @@ CREATE POLICY "Public read access" ON blockages FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON emergency_contacts FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON announcements FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON notifications FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON alerts FOR SELECT USING (true);
 
 -- For development: Allow all operations (remove in production!)
 CREATE POLICY "Allow all for dev" ON buildings FOR ALL USING (true) WITH CHECK (true);
@@ -172,6 +210,8 @@ CREATE POLICY "Allow all for dev" ON blockages FOR ALL USING (true) WITH CHECK (
 CREATE POLICY "Allow all for dev" ON emergency_contacts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for dev" ON announcements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for dev" ON notifications FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for dev" ON user_fcm_tokens FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for dev" ON alerts FOR ALL USING (true) WITH CHECK (true);
 
 -- =====================================================
 -- STORAGE BUCKET FOR IMAGES
@@ -191,6 +231,8 @@ ALTER PUBLICATION supabase_realtime ADD TABLE blockages;
 ALTER PUBLICATION supabase_realtime ADD TABLE emergency_contacts;
 ALTER PUBLICATION supabase_realtime ADD TABLE announcements;
 ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
+ALTER PUBLICATION supabase_realtime ADD TABLE user_fcm_tokens;
+ALTER PUBLICATION supabase_realtime ADD TABLE alerts;
 
 -- =====================================================
 -- DONE! Tables are ready for data migration.

@@ -15,6 +15,7 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
   const [editingBuilding, setEditingBuilding] = useState(null);
   const [editRoom, setEditRoom] = useState('');
   const [editFacility, setEditFacility] = useState('');
+  const [editKeyword, setEditKeyword] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
@@ -59,10 +60,12 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
       description: building.description || '',
       rooms: building.rooms || [],
       facilities: building.facilities || [],
+      keywords: building.keywords || [],
       images: building.images || []
     });
     setEditRoom('');
     setEditFacility('');
+    setEditKeyword('');
   };
 
   // Image upload handler
@@ -145,6 +148,26 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
     setEditingBuilding({ ...editingBuilding, facilities: updatedFacilities });
   };
 
+  const handleAddEditKeyword = () => {
+    if (!editKeyword.trim()) return;
+    // Support comma-separated input
+    const currentKeywords = editingBuilding.keywords || [];
+    const newKeywords = editKeyword.split(',').map(k => k.trim()).filter(k => k && !currentKeywords.includes(k));
+    if (newKeywords.length > 0) {
+      setEditingBuilding({
+        ...editingBuilding,
+        keywords: [...currentKeywords, ...newKeywords].sort((a, b) => a.localeCompare(b))
+      });
+    }
+    setEditKeyword('');
+  };
+
+  const handleRemoveEditKeyword = (index) => {
+    const updatedKeywords = [...(editingBuilding.keywords || [])];
+    updatedKeywords.splice(index, 1);
+    setEditingBuilding({ ...editingBuilding, keywords: updatedKeywords });
+  };
+
   const handleSaveEdit = async () => {
     if (!editingBuilding.name.trim()) {
       addToast({ title: 'Error', description: 'Building name is required', variant: 'error' });
@@ -158,6 +181,8 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
           name: editingBuilding.name.trim(),
           description: editingBuilding.description.trim(),
           rooms: editingBuilding.rooms.map(r => r.trim()).filter(r => r).sort((a, b) => a.localeCompare(b)),
+          facilities: editingBuilding.facilities.map(f => f.trim()).filter(f => f).sort((a, b) => a.localeCompare(b)),
+          keywords: editingBuilding.keywords.map(k => k.trim()).filter(k => k).sort((a, b) => a.localeCompare(b)),
           images: editingBuilding.images || []
         })
         .eq('id', editingBuilding.id);
@@ -200,6 +225,9 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
     }
     if (building.facilities && Array.isArray(building.facilities)) {
       if (building.facilities.some(facility => normalizeForSearch(facility).includes(query))) return true;
+    }
+    if (building.keywords && Array.isArray(building.keywords)) {
+      if (building.keywords.some(keyword => normalizeForSearch(keyword).includes(query))) return true;
     }
     return false;
   });
@@ -402,6 +430,41 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
                       <button
                         onClick={() => handleRemoveEditFacility(index)}
                         className="ml-1 p-0.5 hover:bg-green-200 rounded-full"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              {/* Keywords Section (for search only, hidden in mobile app) */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">
+                  Search Keywords ({editingBuilding.keywords?.length || 0})
+                  <span className="text-xs text-gray-400 ml-2 font-normal">
+                    (used for search only, not shown in app)
+                  </span>
+                </label>
+                <div className="flex gap-2 mb-2">
+                  <Input
+                    value={editKeyword}
+                    onChange={(e) => setEditKeyword(e.target.value)}
+                    placeholder="Add keywords (comma-separated, e.g., registrar, enrollment)"
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddEditKeyword()}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAddEditKeyword} variant="secondary">
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                  {editingBuilding.keywords?.map((keyword, index) => (
+                    <Badge key={index} variant="outline" className="pr-1 bg-blue-50 text-blue-700 border-blue-200">
+                      {keyword}
+                      <button
+                        onClick={() => handleRemoveEditKeyword(index)}
+                        className="ml-1 p-0.5 hover:bg-blue-200 rounded-full"
                       >
                         <X className="w-3 h-3" />
                       </button>

@@ -26,7 +26,7 @@ import {
 
 // getDistance is now imported from pathfinding.js
 
-const EmergencyScreen = ({ navigation }) => {
+const EmergencyScreen = ({ navigation, route }) => {
   const [userLocation, setUserLocation] = useState(null);
   const [evacuationZones, setEvacuationZones] = useState([]);
   const [blockages, setBlockages] = useState([]);
@@ -34,6 +34,7 @@ const EmergencyScreen = ({ navigation }) => {
   const [edges, setEdges] = useState([]);
   const [isOutsideCampus, setIsOutsideCampus] = useState(false);
   const [nearestZone, setNearestZone] = useState(null);
+  const [autoTriggerEvacuation, setAutoTriggerEvacuation] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Pulse animation for emergency button
@@ -110,6 +111,59 @@ const EmergencyScreen = ({ navigation }) => {
     };
   }, []);
 
+  // Check if an edge is blocked using the shared utility
+  const checkEdgeBlocked = (edge) => {
+    const activeBlockages = blockages.filter(b => b.active);
+    const nodesMap = {};
+    nodes.forEach(n => { nodesMap[n.id] = n; });
+    return isEdgeBlocked(edge, activeBlockages, nodesMap);
+  };
+
+  // Check for auto-trigger evacuation from critical alert
+  useEffect(() => {
+    if (route?.params?.triggerEvacuation) {
+      setAutoTriggerEvacuation(true);
+      // Clear the param to prevent re-triggering
+      navigation.setParams({ triggerEvacuation: false });
+    }
+  }, [route?.params?.triggerEvacuation, navigation]);
+
+  // Auto-trigger evacuation when ready (location, zones, and nodes loaded)
+  useEffect(() => {
+    if (autoTriggerEvacuation && nearestZone && userLocation && nodes.length > 0) {
+      setAutoTriggerEvacuation(false);
+      // Slight delay to ensure UI is ready
+      setTimeout(() => {
+        startEvacuationNavigation();
+      }, 500);
+    }
+  }, [autoTriggerEvacuation, nearestZone, userLocation, nodes]);
+
+  // Start evacuation navigation directly (used by auto-trigger)
+  const startEvacuationNavigation = () => {
+    if (!nearestZone) {
+      Alert.alert('No Evacuation Zones', 'No evacuation zones are currently defined.');
+      return;
+    }
+
+    const validEdges = edges.filter(e => !checkEdgeBlocked(e));
+    
+    navigation.navigate('ARNavigation', {
+      building: {
+        name: nearestZone.name,
+        latitude: nearestZone.centerLat,
+        longitude: nearestZone.centerLng,
+        isEvacuationZone: true
+      },
+      userLocation,
+      nodes,
+      edges: validEdges,
+      blockages: blockages.filter(b => b.active),
+      isEmergency: true,
+      skipIntro: true
+    });
+  };
+
   // Calculate nearest zone when location or zones change
   useEffect(() => {
     if (!userLocation || evacuationZones.length === 0) {
@@ -147,8 +201,8 @@ const EmergencyScreen = ({ navigation }) => {
   const checkIfOutsideCampus = (coords) => {
     if (!coords) return;
     const [lng, lat] = coords;
-    const outside = lat > CAMPUS_BOUNDS.north || lat < CAMPUS_BOUNDS.south ||
-                    lng > CAMPUS_BOUNDS.east || lng < CAMPUS_BOUNDS.west;
+    // Use the polygon-based isWithinCampus function
+    const outside = !isWithinCampus(lat, lng);
     setIsOutsideCampus(outside);
   };
 
@@ -207,14 +261,6 @@ const EmergencyScreen = ({ navigation }) => {
       }))
   });
 
-  // Check if an edge is blocked using the shared utility
-  const checkEdgeBlocked = (edge) => {
-    const activeBlockages = blockages.filter(b => b.active);
-    const nodesMap = {};
-    nodes.forEach(n => { nodesMap[n.id] = n; });
-    return isEdgeBlocked(edge, activeBlockages, nodesMap);
-  };
-
   const handleActivateEvacuation = () => {
     if (!nearestZone) {
       Alert.alert('No Evacuation Zones', 'No evacuation zones are currently defined. Please contact campus security.');
@@ -231,9 +277,9 @@ const EmergencyScreen = ({ navigation }) => {
           onPress: () => {
             const validEdges = edges.filter(e => !checkEdgeBlocked(e));
             
-            // Launch AR Navigation
+            // Launch AR Navigation for emergency evacuation
             navigation.navigate('ARNavigation', {
-              destination: {
+              building: {
                 name: nearestZone.name,
                 latitude: nearestZone.centerLat,
                 longitude: nearestZone.centerLng,
@@ -242,7 +288,9 @@ const EmergencyScreen = ({ navigation }) => {
               userLocation,
               nodes,
               edges: validEdges,
-              isEmergency: true
+              blockages: blockages.filter(b => b.active),
+              isEmergency: true,
+              skipIntro: true  // Skip AR intro for emergency - need to navigate quickly
             });
           }
         }

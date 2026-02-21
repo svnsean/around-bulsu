@@ -28,6 +28,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
       : null;
   const [distance, setDistance] = useState(null);
   const [pathPreview, setPathPreview] = useState(null);
+  const [userConnectorLine, setUserConnectorLine] = useState(null);  // Dotted line from user to first node
   const [loading, setLoading] = useState(false);
   const [launchingAR, setLaunchingAR] = useState(false);
   const [calculatedPath, setCalculatedPath] = useState([]);
@@ -94,12 +95,29 @@ const BuildingInfoScreen = ({ route, navigation }) => {
         // Fallback to direct line if no path found
         const fallbackPath = [userCoords, [building.longitude, building.latitude]];
         setPathPreview(pathToGeoJSON(fallbackPath));
+        setUserConnectorLine(null);  // No connector needed for fallback
         setMapBounds(getPathBounds(fallbackPath));
         setCalculatedPath(fallbackPath.map(([lng, lat]) => ({ lat, lng })));
       } else {
         console.log('[BuildingInfo] Path found with', result.path.length, 'points, distance:', result.distance, 'm');
+        
+        // Main path (solid line) - only graph nodes
         setPathPreview(pathToGeoJSON(result.path));
-        setMapBounds(getPathBounds(result.path));
+        
+        // User connector line (dotted) - from user to first path node
+        if (result.userStartPoint && result.path.length > 0) {
+          const connectorPath = [result.userStartPoint, result.path[0]];
+          setUserConnectorLine(pathToGeoJSON(connectorPath));
+        } else {
+          setUserConnectorLine(null);
+        }
+        
+        // Include user position in bounds calculation
+        const fullPath = result.userStartPoint 
+          ? [result.userStartPoint, ...result.path]
+          : result.path;
+        setMapBounds(getPathBounds(fullPath));
+        
         // Store path nodes for AR navigation
         setCalculatedPath(result.path.map(([lng, lat]) => ({ lat, lng })));
         // Update distance with actual path distance
@@ -218,7 +236,24 @@ const BuildingInfoScreen = ({ route, navigation }) => {
                   animationDuration={500}
                 />
 
-                {/* Path preview */}
+                {/* User connector line (dotted) - from user to first path node */}
+                {userConnectorLine && (
+                  <MapboxGL.ShapeSource id="userConnector" shape={userConnectorLine}>
+                    <MapboxGL.LineLayer
+                      id="userConnectorLayer"
+                      style={{
+                        lineColor: '#800000',
+                        lineWidth: 4,
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                        lineDasharray: [2, 3],  // Dotted pattern
+                        lineOpacity: 0.7,
+                      }}
+                    />
+                  </MapboxGL.ShapeSource>
+                )}
+
+                {/* Path preview (solid) - actual path nodes */}
                 {pathPreview && (
                   <MapboxGL.ShapeSource id="pathPreview" shape={pathPreview}>
                     <MapboxGL.LineLayer
@@ -270,11 +305,11 @@ const BuildingInfoScreen = ({ route, navigation }) => {
           )}
         </View>
 
-        {/* Facilities & Rooms */}
+        {/* Rooms Section */}
         {building.rooms && building.rooms.length > 0 && (
-          <View className="px-5 mb-52">
+          <View className="px-5 mb-4">
             <Text className="text-lg font-bold text-gray-800 mb-3">
-              Facilities & Rooms ({building.rooms.length})
+              Rooms ({building.rooms.length})
             </Text>
             <View className="flex-row flex-wrap mt-2">
               {building.rooms.map((room, index) => (
@@ -288,6 +323,31 @@ const BuildingInfoScreen = ({ route, navigation }) => {
               ))}
             </View>
           </View>
+        )}
+
+        {/* Facilities Section */}
+        {building.facilities && building.facilities.length > 0 && (
+          <View className="px-5 mb-52">
+            <Text className="text-lg font-bold text-gray-800 mb-3">
+              Facilities ({building.facilities.length})
+            </Text>
+            <View className="flex-row flex-wrap mt-2">
+              {building.facilities.map((facility, index) => (
+                <View 
+                  key={index} 
+                  className="flex-row items-center bg-green-100 px-3 py-2 rounded-lg mr-2 mb-2"
+                >
+                  <Icon name="info" size={14} color="#059669" style={{ marginRight: 6 }} />
+                  <Text className="text-sm text-green-800">{facility}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Bottom spacer when no facilities */}
+        {(!building.facilities || building.facilities.length === 0) && building.rooms && building.rooms.length > 0 && (
+          <View className="mb-48" />
         )}
       </ScrollView>
 

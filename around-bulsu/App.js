@@ -1,6 +1,6 @@
 // App.js
 import "./global.css";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
@@ -10,10 +10,25 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Icon } from './src/components/ui';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { ToastProvider } from './src/components/ui/Toast';
+import { AlertProvider } from './src/context/AlertContext';
+import AlertOverlay from './src/components/AlertOverlay';
+import CriticalAlertModal from './src/components/CriticalAlertModal';
+import { supabase, subscribeToTable } from './src/supabase';
 
 // Initialize Mapbox at app startup
 import { initializeMapbox } from './src/config/mapbox';
 initializeMapbox();
+
+// Register background message handler early (outside component lifecycle)
+// This is critical for receiving notifications when app is in background/killed
+(async () => {
+  try {
+    const { registerBackgroundMessageHandler } = await import('./src/services/notificationService');
+    registerBackgroundMessageHandler();
+  } catch (e) {
+    console.log('Background handler setup skipped:', e.message);
+  }
+})();
 
 // Import screens
 import SplashScreen from './src/screens/SplashScreen';
@@ -141,6 +156,16 @@ function EmergencyStack() {
   );
 }
 
+// Info Stack (to allow BuildingInfo navigation from Info tab)
+function InfoStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="InfoMain" component={InfoScreen} />
+      <Stack.Screen name="BuildingInfo" component={BuildingInfoScreen} />
+    </Stack.Navigator>
+  );
+}
+
 // Main Tab Navigator
 function MainTabs() {
   return (
@@ -177,7 +202,7 @@ function MainTabs() {
       />
       <Tab.Screen 
         name="Info" 
-        component={InfoScreen}
+        component={InfoStack}
         options={{
           tabBarLabel: 'Info',
           tabBarIcon: ({ focused }) => (
@@ -192,6 +217,99 @@ function MainTabs() {
 // Main App Component
 export default function App() {
   const [isReady, setIsReady] = useState(false);
+  const [criticalAlert, setCriticalAlert] = useState(null);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const navigationRef = useRef(null);
+
+  // Emergency data for evacuation
+  const [evacuationData, setEvacuationData] = useState({
+    nodes: [],
+    edges: [],
+    blockages: [],
+    evacuationZones: [],
+  });
+
+  // Load evacuation data from Supabase
+  useEffect(() => {
+    const unsubNodes = subscribeToTable('nodes', (data) => {
+      setEvacuationData(prev => ({ ...prev, nodes: data }));
+    });
+    const unsubEdges = subscribeToTable('edges', (data) => {
+      setEvacuationData(prev => ({ ...prev, edges: data }));
+    });
+    const unsubBlockages = subscribeToTable('blockages', (data) => {
+      setEvacuationData(prev => ({ ...prev, blockages: data }));
+    });
+    const unsubZones = subscribeToTable('evacuation_zones', (data) => {
+      setEvacuationData(prev => ({ ...prev, evacuationZones: data }));
+    });
+
+    return () => {
+      unsubNodes();
+      unsubEdges();
+      unsubBlockages();
+      unsubZones();
+    };
+  }, []);
+
+  // Initialize FCM notifications (delayed to prevent blocking)
+  useEffect(() => {
+    let cleanup = () => {};
+    let isMounted = true;
+
+    // Delay FCM initialization to ensure app is fully loaded
+    const timeoutId = setTimeout(async () => {
+      if (!isMounted) return;
+      
+      try {
+        // Dynamically import to prevent any load-time issues
+        const { initializeNotifications } = await import('./src/services/notificationService');
+        
+        if (!isMounted) return;
+        
+        cleanup = await initializeNotifications({
+          onForegroundMessage: (alert) => {
+            console.log('Foreground alert received:', alert);
+            setCriticalAlert(alert);
+            setShowAlertModal(true);
+          },
+          onNotificationOpen: (alert) => {
+            console.log('Notification opened alert:', alert);
+            setCriticalAlert(alert);
+            setShowAlertModal(true);
+          },
+        }) || (() => {});
+      } catch (error) {
+        console.log('FCM setup skipped:', error.message);
+      }
+    }, 3000); // Wait 3 seconds after app loads
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      cleanup();
+    };
+  }, []);
+
+  // Handle evacuation from alert modal
+  const handleEvacuate = async () => {
+    setShowAlertModal(false);
+    setCriticalAlert(null);
+
+    // Navigate to Emergency tab and trigger evacuation
+    if (navigationRef.current) {
+      // Navigate to Emergency tab
+      navigationRef.current.navigate('Emergency', {
+        screen: 'EmergencyMain',
+        params: { triggerEvacuation: true },
+      });
+    }
+  };
+
+  const handleDismissAlert = () => {
+    setShowAlertModal(false);
+    setCriticalAlert(null);
+  };
 
   // Show splash screen until ready
   if (!isReady) {
@@ -203,22 +321,33 @@ export default function App() {
     <SafeAreaProvider>
       <NetworkProvider>
         <ToastProvider>
-          <NavigationContainer>
-            <Drawer.Navigator
-              drawerContent={(props) => <CustomDrawerContent {...props} />}
-              screenOptions={{
-                headerShown: false,
-                drawerStyle: {
-                  backgroundColor: '#fff',
-                  width: 280,
-                },
-              }}
-            >
-              <Drawer.Screen name="Main" component={MainTabs} />
-              <Drawer.Screen name="Notifications" component={NotificationsScreen} />
-              <Drawer.Screen name="Settings" component={SettingsScreen} />
-            </Drawer.Navigator>
-          </NavigationContainer>
+          <AlertProvider>
+            <NavigationContainer ref={navigationRef}>
+              <Drawer.Navigator
+                drawerContent={(props) => <CustomDrawerContent {...props} />}
+                screenOptions={{
+                  headerShown: false,
+                  drawerStyle: {
+                    backgroundColor: '#fff',
+                    width: 280,
+                  },
+                }}
+              >
+                <Drawer.Screen name="Main" component={MainTabs} />
+                <Drawer.Screen name="Notifications" component={NotificationsScreen} />
+                <Drawer.Screen name="Settings" component={SettingsScreen} />
+              </Drawer.Navigator>
+            </NavigationContainer>
+            <AlertOverlay />
+          </AlertProvider>
+
+          {/* Critical Alert Modal - FCM-based overlay for background/killed state */}
+          <CriticalAlertModal
+            visible={showAlertModal}
+            alert={criticalAlert}
+            onDismiss={handleDismissAlert}
+            onEvacuate={handleEvacuate}
+          />
         </ToastProvider>
       </NetworkProvider>
     </SafeAreaProvider>

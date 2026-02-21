@@ -27,21 +27,34 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   const [sheetHeight] = useState(new Animated.Value(SHEET_MIN_HEIGHT));
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // Search logic - searches both building names and rooms, sorted alphabetically
+  // Normalize string for search: lowercase, remove spaces, dashes, and underscores
+  const normalizeForSearch = (str) => {
+    return (str || '').toLowerCase().replace(/[-_\s]/g, '');
+  };
+
+  // Search logic - searches building names, rooms, facilities, and keywords (normalized)
   const filteredBuildings = buildings
     .filter((building) => {
       if (!searchQuery.trim()) return true;
       
-      const query = searchQuery.toLowerCase();
+      const query = normalizeForSearch(searchQuery);
       
       // Search by building name
-      if (building.name?.toLowerCase().includes(query)) return true;
+      if (normalizeForSearch(building.name).includes(query)) return true;
       
       // Search by room name
       if (building.rooms && Array.isArray(building.rooms)) {
-        return building.rooms.some(room => 
-          room.toLowerCase().includes(query)
-        );
+        if (building.rooms.some(room => normalizeForSearch(room).includes(query))) return true;
+      }
+      
+      // Search by facility
+      if (building.facilities && Array.isArray(building.facilities)) {
+        if (building.facilities.some(facility => normalizeForSearch(facility).includes(query))) return true;
+      }
+      
+      // Search by keywords (hidden from display but used for search)
+      if (building.keywords && Array.isArray(building.keywords)) {
+        if (building.keywords.some(keyword => normalizeForSearch(keyword).includes(query))) return true;
       }
       
       return false;
@@ -111,15 +124,28 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
   const getMatchingRooms = (building) => {
     if (!searchQuery.trim() || !building.rooms) return [];
     
-    const query = searchQuery.toLowerCase();
+    const query = normalizeForSearch(searchQuery);
     return building.rooms.filter(room => 
-      room.toLowerCase().includes(query)
+      normalizeForSearch(room).includes(query)
+    );
+  };
+
+  const getMatchingFacilities = (building) => {
+    if (!searchQuery.trim() || !building.facilities) return [];
+    
+    const query = normalizeForSearch(searchQuery);
+    return building.facilities.filter(facility => 
+      normalizeForSearch(facility).includes(query)
     );
   };
 
   const renderBuildingItem = ({ item }) => {
     const matchingRooms = getMatchingRooms(item);
-    const isRoomSearch = matchingRooms.length > 0 && !item.name?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchingFacilities = getMatchingFacilities(item);
+    const nameMatches = normalizeForSearch(item.name).includes(normalizeForSearch(searchQuery));
+    const isRoomSearch = matchingRooms.length > 0 && !nameMatches;
+    const isFacilitySearch = matchingFacilities.length > 0 && !nameMatches;
+    const hasSubMatches = isRoomSearch || isFacilitySearch;
 
     return (
       <TouchableOpacity 
@@ -152,8 +178,29 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
               </View>
             </View>
           )}
+
+          {isFacilitySearch && matchingFacilities.length > 0 && (
+            <View className="mt-1.5">
+              <Text className="text-xs text-green-700 font-semibold mb-1">Matching facilities:</Text>
+              <View className="flex-row flex-wrap">
+                {matchingFacilities.slice(0, 3).map((facility, idx) => (
+                  <View 
+                    key={idx} 
+                    className="bg-green-100 px-2 py-0.5 rounded-full mr-1.5 mb-1"
+                  >
+                    <Text className="text-xs text-green-800 font-medium">{facility}</Text>
+                  </View>
+                ))}
+                {matchingFacilities.length > 3 && (
+                  <Text className="text-xs text-gray-400 italic self-center">
+                    +{matchingFacilities.length - 3} more
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
           
-          {item.description && !isRoomSearch && (
+          {item.description && !hasSubMatches && (
             <Text className="text-sm text-gray-500" numberOfLines={1}>
               {item.description}
             </Text>

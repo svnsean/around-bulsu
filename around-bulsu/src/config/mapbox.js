@@ -21,31 +21,52 @@ export const initializeMapbox = () => {
 };
 
 // Campus center coordinates (BulSU Malolos)
-export const BSU_CENTER = [120.813778, 14.857830];
+// 14°51'28.3"N 120°48'50.1"E converted to decimal
+export const BSU_CENTER = [120.8139, 14.8579];
 
-// Campus bounds for boundary checking
+// Campus boundary polygon (~500m hexagonal radius from center)
+// Points go clockwise: N -> NE -> SE -> S -> SW -> NW
+export const CAMPUS_POLYGON = [
+  { lat: 14.8624, lng: 120.8139 }, // North
+  { lat: 14.8602, lng: 120.8180 }, // Northeast
+  { lat: 14.8557, lng: 120.8180 }, // Southeast
+  { lat: 14.8534, lng: 120.8139 }, // South
+  { lat: 14.8557, lng: 120.8098 }, // Southwest
+  { lat: 14.8602, lng: 120.8098 }, // Northwest
+];
+
+// Legacy bounds (kept for compatibility, derived from polygon)
 export const CAMPUS_BOUNDS = {
-  north: 14.8485,
-  south: 14.8410,
-  east: 120.8150,
-  west: 120.8050
+  north: 14.8624,
+  south: 14.8534,
+  east: 120.8180,
+  west: 120.8098
 };
 
 // Default map style
 export const MAP_STYLE = MapboxGL.StyleURL.Street;
 
-// Check if coordinates are within campus
+// Ray-casting algorithm to check if point is inside polygon
 export const isWithinCampus = (latitude, longitude) => {
-  return latitude <= CAMPUS_BOUNDS.north &&
-         latitude >= CAMPUS_BOUNDS.south &&
-         longitude <= CAMPUS_BOUNDS.east &&
-         longitude >= CAMPUS_BOUNDS.west;
+  const polygon = CAMPUS_POLYGON;
+  if (!polygon || polygon.length < 3) return false;
+  
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    const intersect = ((yi > latitude) !== (yj > latitude)) &&
+                      (longitude < (xj - xi) * (latitude - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 };
 
 export default {
   MAPBOX_ACCESS_TOKEN,
   initializeMapbox,
   BSU_CENTER,
+  CAMPUS_POLYGON,
   CAMPUS_BOUNDS,
   MAP_STYLE,
   isWithinCampus,

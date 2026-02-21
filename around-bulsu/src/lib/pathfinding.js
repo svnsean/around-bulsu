@@ -28,12 +28,20 @@ export const getDistance = (lat1, lon1, lat2, lon2) => {
  * @returns {number} Bearing in degrees (0-360)
  */
 export const getBearing = (lat1, lon1, lat2, lon2) => {
+  // Guard: if points are coincident (same location), return 0 to avoid potential NaN
+  if (lat1 === lat2 && lon1 === lon2) {
+    return 0;
+  }
+  
   const p1 = lat1 * Math.PI / 180;
   const p2 = lat2 * Math.PI / 180;
   const dl = (lon2 - lon1) * Math.PI / 180;
   const y = Math.sin(dl) * Math.cos(p2);
   const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  
+  // Safety check: ensure result is a valid number
+  return isNaN(bearing) ? 0 : bearing;
 };
 
 /**
@@ -444,7 +452,7 @@ export const findPath = ({
         current = cameFrom.get(current);
       }
       
-      // Calculate total path distance
+      // Calculate total path distance (between graph nodes only)
       let totalDistance = 0;
       for (let i = 0; i < pathCoords.length - 1; i++) {
         totalDistance += getDistance(
@@ -453,7 +461,10 @@ export const findPath = ({
         );
       }
       
-      // Add start and end points if requested
+      // Calculate distances to endpoints for total distance (but keep endpoints separate for visual-only dotted line)
+      let userStartPoint = null;
+      let destinationEndPoint = null;
+      
       if (includeEndpoints) {
         // Add distance from actual start to first node
         totalDistance += getDistance(start[1], start[0], pathCoords[0][1], pathCoords[0][0]);
@@ -463,14 +474,18 @@ export const findPath = ({
           end[1], end[0]
         );
         
-        pathCoords.unshift(start);
-        pathCoords.push(end);
+        // Store endpoints separately for visual-only dotted line rendering
+        // DO NOT add to pathCoords - path only contains actual graph nodes
+        userStartPoint = start;  // [lng, lat]
+        destinationEndPoint = end;  // [lng, lat]
       }
       
       return {
         path: pathCoords,
         pathNodes: pathNodesList,
         distance: Math.round(totalDistance),
+        userStartPoint,  // Separate: for dotted line from user to first node
+        destinationEndPoint,  // Separate: for dotted line from last node to destination
         startNode,
         endNode
       };
@@ -617,6 +632,124 @@ export const calculateETA = (distanceMeters, walkingSpeed = 1.4) => {
   return `${etaSeconds}s`;
 };
 
+/**
+ * Calculate perpendicular distance from a point to a line segment
+ * @param {number} px - Point longitude
+ * @param {number} py - Point latitude
+ * @param {number} x1 - Segment start longitude
+ * @param {number} y1 - Segment start latitude
+ * @param {number} x2 - Segment end longitude
+ * @param {number} y2 - Segment end latitude
+ * @returns {number} Distance in meters
+ */
+const pointToSegmentDistance = (px, py, x1, y1, x2, y2) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  
+  if (dx === 0 && dy === 0) {
+    // Segment is a point
+    return getDistance(py, px, y1, x1);
+  }
+  
+  // Calculate projection parameter t
+  let t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy);
+  
+  // Clamp t to [0, 1] to stay within segment
+  t = Math.max(0, Math.min(1, t));
+  
+  // Find closest point on segment
+  const closestX = x1 + t * dx;
+  const closestY = y1 + t * dy;
+  
+  return getDistance(py, px, closestY, closestX);
+};
+
+/**
+ * Calculate minimum distance from user to any segment of the path
+ * @param {number} userLat - User latitude
+ * @param {number} userLng - User longitude
+ * @param {Array<Object>} pathNodes - Array of path nodes with lat, lng
+ * @returns {Object} { distance: number, closestSegmentIndex: number, closestPoint: {lat, lng} }
+ */
+export const getDistanceFromPath = (userLat, userLng, pathNodes) => {
+  if (!pathNodes || pathNodes.length < 2) {
+    return { distance: Infinity, closestSegmentIndex: -1, closestPoint: null };
+  }
+  
+  let minDistance = Infinity;
+  let closestSegmentIndex = 0;
+  let closestPoint = null;
+  
+  for (let i = 0; i < pathNodes.length - 1; i++) {
+    const node1 = pathNodes[i];
+    const node2 = pathNodes[i + 1];
+    
+    const dist = pointToSegmentDistance(
+      userLng, userLat,
+      node1.lng, node1.lat,
+      node2.lng, node2.lat
+    );
+    
+    if (dist < minDistance) {
+      minDistance = dist;
+      closestSegmentIndex = i;
+      
+      // Calculate the actual closest point on the segment
+      const dx = node2.lng - node1.lng;
+      const dy = node2.lat - node1.lat;
+      let t = 0;
+      if (dx !== 0 || dy !== 0) {
+        t = ((userLng - node1.lng) * dx + (userLat - node1.lat) * dy) / (dx * dx + dy * dy);
+        t = Math.max(0, Math.min(1, t));
+      }
+      closestPoint = {
+        lng: node1.lng + t * dx,
+        lat: node1.lat + t * dy
+      };
+    }
+  }
+  
+  return { distance: minDistance, closestSegmentIndex, closestPoint };
+};
+
+/**
+ * Trim path to remove segments behind the user (progressive path clearing)
+ * @param {Array<Object>} pathNodes - Full path nodes array
+ * @param {number} userLat - User latitude
+ * @param {number} userLng - User longitude
+ * @param {number} clearedIndex - Index of already cleared segments (to prevent re-adding)
+ * @param {number} threshold - Distance threshold in meters to consider a waypoint "passed" (default: 8m)
+ * @returns {Object} { trimmedNodes: Array, newClearedIndex: number }
+ */
+export const trimPathBehindUser = (pathNodes, userLat, userLng, clearedIndex = 0, threshold = 8) => {
+  if (!pathNodes || pathNodes.length < 2) {
+    return { trimmedNodes: pathNodes || [], newClearedIndex: clearedIndex };
+  }
+  
+  let newClearedIndex = clearedIndex;
+  
+  // Find the furthest node the user has passed
+  for (let i = clearedIndex; i < pathNodes.length - 1; i++) {
+    const distToNode = getDistance(userLat, userLng, pathNodes[i].lat, pathNodes[i].lng);
+    const distToNextNode = getDistance(userLat, userLng, pathNodes[i + 1].lat, pathNodes[i + 1].lng);
+    
+    // User has passed this node if:
+    // 1. They're close enough to it (within threshold), AND
+    // 2. They're closer to the next node than to this one
+    if (distToNode < threshold && distToNextNode < distToNode) {
+      newClearedIndex = i + 1;
+    } else if (distToNode >= threshold) {
+      // Stop checking once we're far from nodes
+      break;
+    }
+  }
+  
+  // Return trimmed path starting from cleared index
+  const trimmedNodes = pathNodes.slice(newClearedIndex);
+  
+  return { trimmedNodes, newClearedIndex };
+};
+
 // Default export with all functions
 export default {
   getDistance,
@@ -632,5 +765,7 @@ export default {
   pathToGeoJSON,
   getPathBounds,
   detectTurn,
-  calculateETA
+  calculateETA,
+  getDistanceFromPath,
+  trimPathBehindUser
 };

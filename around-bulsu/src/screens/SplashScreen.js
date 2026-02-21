@@ -47,24 +47,46 @@ const SplashScreen = ({ onReady }) => {
   }, []);
 
   const initializeApp = async () => {
+    // Safety timeout - always proceed after 5 seconds no matter what
+    const safetyTimeout = setTimeout(() => {
+      console.log('Safety timeout triggered - proceeding to app');
+      onReady();
+    }, 5000);
+    
     try {
-      // Request Camera Permission
+      // Request Camera Permission (with timeout protection)
       if (!cameraPermission?.granted) {
-        await requestCameraPermission();
+        try {
+          await Promise.race([
+            requestCameraPermission(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Camera permission timeout')), 3000))
+          ]);
+        } catch (e) {
+          console.log('Camera permission skipped:', e.message);
+        }
       }
 
-      // Request Location Permission
-      await Location.requestForegroundPermissionsAsync();
+      // Request Location Permission (with timeout protection)
+      try {
+        await Promise.race([
+          Location.requestForegroundPermissionsAsync(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Location permission timeout')), 3000))
+        ]);
+      } catch (e) {
+        console.log('Location permission skipped:', e.message);
+      }
       
       // Wait minimum time for splash screen
       await new Promise(resolve => setTimeout(resolve, 2500));
 
+      clearTimeout(safetyTimeout);
       // Ready to navigate
       onReady();
     } catch (error) {
       console.error('Initialization error:', error);
-      // Still navigate even if permissions denied (handle later)
-      setTimeout(onReady, 2500);
+      clearTimeout(safetyTimeout);
+      // Still navigate even if permissions denied
+      onReady();
     }
   };
 

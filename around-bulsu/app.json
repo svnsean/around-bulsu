@@ -36,6 +36,7 @@
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.aroundbulsu",
+      "googleServicesFile": "./google-services.json",
       "runtimeVersion": "1.0.0"
     },
     "web": {
@@ -86,7 +87,9 @@
             "minSdkVersion": 24
           }
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging"
     ],
     "experiments": {
       "typedRoutes": true

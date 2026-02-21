@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "649098234000",
+    "project_id": "around-bulsu-backend",
+    "storage_bucket": "around-bulsu-backend.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:649098234000:android:a57d65766c4da7c1413015",
+        "android_client_info": {
+          "package_name": "com.anonymous.aroundbulsu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZrYTpKYnjk80Cls7VULSaCufL7qwKSbM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:649098234000:android:91143c831d5f08d7413015",
+        "android_client_info": {
+          "package_name": "com.around.bulsu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZrYTpKYnjk80Cls7VULSaCufL7qwKSbM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

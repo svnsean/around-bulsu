@@ -104,6 +104,57 @@ export class CompassFilter {
     this.heading = null;
     this.history = [];
   }
+  
+  /**
+   * Check if compass readings are stable enough for reliable heading.
+   * Returns true if heading variance is acceptable (compass is calibrated).
+   * Requires at least historySize samples to make a determination.
+   */
+  isCalibrated() {
+    if (this.history.length < this.historySize) {
+      return false; // Not enough samples yet
+    }
+    
+    // Calculate circular variance (handles wrap-around at 0/360)
+    // Use mean of unit vectors approach
+    let sumSin = 0;
+    let sumCos = 0;
+    for (const h of this.history) {
+      const rad = h * Math.PI / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    const meanSin = sumSin / this.history.length;
+    const meanCos = sumCos / this.history.length;
+    // R is the mean resultant length (0 = uniform distribution, 1 = all same direction)
+    const R = Math.sqrt(meanSin * meanSin + meanCos * meanCos);
+    
+    // If R > 0.9, readings are stable (low variance) - compass is calibrated
+    // If R < 0.7, readings are erratic - needs calibration
+    return R > 0.85;
+  }
+  
+  /**
+   * Get current calibration confidence as a value 0-1
+   */
+  getCalibrationConfidence() {
+    if (this.history.length < 3) {
+      return 0;
+    }
+    
+    let sumSin = 0;
+    let sumCos = 0;
+    for (const h of this.history) {
+      const rad = h * Math.PI / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    const R = Math.sqrt(
+      (sumSin / this.history.length) ** 2 + 
+      (sumCos / this.history.length) ** 2
+    );
+    return R;
+  }
 }
 
 /**
