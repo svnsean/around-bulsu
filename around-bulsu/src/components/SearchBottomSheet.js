@@ -153,7 +153,7 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
         onPress={() => handleBuildingPress(item)}
       >
         <View className="w-11 h-11 rounded-xl bg-maroon-100 items-center justify-center mr-4">
-          <Icon name="building" size={20} color="#800000" />
+          <Icon name="building" size={20} color="#B22222" />
         </View>
         <View className="flex-1">
           <Text className="text-base font-semibold text-gray-900 mb-0.5">{item.name}</Text>
@@ -237,7 +237,7 @@ const SearchBottomSheet = forwardRef(({ buildings, onSelectBuilding }, ref) => {
         onPress={expand}
         activeOpacity={1}
       >
-        <Icon name="search" size={18} color="#800000" style={{ marginRight: 10 }} />
+        <Icon name="search" size={18} color="#B22222" style={{ marginRight: 10 }} />
         <TextInput
           className="flex-1 text-sm text-gray-800"
           style={{ paddingVertical: 4 }}

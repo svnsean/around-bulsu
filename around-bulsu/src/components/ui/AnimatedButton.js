@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   primary: {
-    backgroundColor: '#800000',
+    backgroundColor: '#B22222',
   },
   secondary: {
     backgroundColor: '#F3F4F6',
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   outline: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: '#800000',
+    borderColor: '#B22222',
   },
   ghost: {
     backgroundColor: 'transparent',
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   textOutline: {
-    color: '#800000',
+    color: '#B22222',
     fontWeight: '600',
     fontSize: 14,
   },

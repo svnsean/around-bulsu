@@ -84,6 +84,7 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
   };
 
   const filteredBuildings = buildings.filter(building => {
+    if (building.is_archived) return false;
     if (!searchQuery.trim()) return true;
     const query = normalizeForSearch(searchQuery);
     if (normalizeForSearch(building.name).includes(query)) return true;
@@ -234,11 +235,15 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
 
   const deleteBuilding = async (id) => {
     try {
-      await supabase.from('buildings').delete().eq('id', id);
+      const { error } = await supabase
+        .from('buildings')
+        .update({ is_archived: true, archived_at: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
       setSelectedBuilding(null);
-      addToast({ title: 'Deleted', description: 'Building pin deleted', variant: 'success' });
+      addToast({ title: 'Archived', description: 'Building pin archived', variant: 'success' });
     } catch (error) {
-      addToast({ title: 'Error', description: 'Error deleting building', variant: 'error' });
+      addToast({ title: 'Error', description: 'Error archiving building', variant: 'error' });
     }
   };
 
@@ -615,7 +620,7 @@ const MapEditor = ({ onEditBuilding, initialMode, onModeApplied }) => {
           ))}
 
           {/* Building Markers */}
-          {viewLayers.buildings && buildings.map((building) => (
+          {viewLayers.buildings && buildings.filter(b => !b.is_archived).map((building) => (
             <Marker 
               key={building.id} 
               longitude={building.longitude} 

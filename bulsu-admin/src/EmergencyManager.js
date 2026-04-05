@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import MapGL, { Source, Layer, Marker } from 'react-map-gl';
 import { supabase, subscribeToTable } from './supabase';
-import { AlertTriangle, Shield, ShieldOff, Trash2, Bell, Plus, Eye, Navigation, Route, StopCircle, BellOff } from 'lucide-react';
+import { AlertTriangle, Shield, ShieldOff, Trash2, Bell, Plus, Eye, Navigation, Route, StopCircle, BellOff, Flame, Waves, Wind, Activity, ChevronDown } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { Input, Textarea } from './components/ui/Input';
 import { Badge } from './components/ui/Badge';
@@ -12,6 +12,15 @@ import { cn } from './lib/utils';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoic3Zuc2VhbiIsImEiOiJjbWh6MXViYmQwaWlvMnJxMW15MW41cWltIn0.Qz2opq51Zz3oj-MGPz7aow';
+
+const ALERT_TYPES = {
+    emergency: { label: 'Emergency', icon: AlertTriangle, className: 'bg-red-100 text-red-700', iconColor: 'text-red-600' },
+    fire: { label: 'Fire', icon: Flame, className: 'bg-orange-100 text-orange-700', iconColor: 'text-orange-600' },
+    earthquake: { label: 'Earthquake', icon: Activity, className: 'bg-amber-100 text-amber-700', iconColor: 'text-amber-600' },
+    flood: { label: 'Flood', icon: Waves, className: 'bg-blue-100 text-blue-700', iconColor: 'text-blue-600' },
+    typhoon: { label: 'Typhoon', icon: Wind, className: 'bg-purple-100 text-purple-700', iconColor: 'text-purple-600' },
+    drill: { label: 'Drill', icon: Bell, className: 'bg-yellow-100 text-yellow-700', iconColor: 'text-yellow-600' },
+};
 
 // A* Pathfinding Algorithm
 const findPath = (nodes, edges, startId, endId, activeBlockages = []) => {
@@ -168,12 +177,25 @@ const EmergencyManager = () => {
     const [notificationMessage, setNotificationMessage] = useState('');
     const [alertType, setAlertType] = useState('emergency'); // emergency, fire, earthquake, flood, typhoon, drill
     const [sending, setSending] = useState(false);
+    const [alertTypeDropdownOpen, setAlertTypeDropdownOpen] = useState(false);
+    const alertTypeDropdownRef = useRef(null);
 
     // Active emergency alerts
     const [activeAlerts, setActiveAlerts] = useState([]);
     const [stoppingAlert, setStoppingAlert] = useState(null);
 
     const { addToast } = useToast();
+
+    // Close alert type dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (alertTypeDropdownRef.current && !alertTypeDropdownRef.current.contains(e.target)) {
+                setAlertTypeDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         const unsubNodes = subscribeToTable('nodes', setNodes);
@@ -643,25 +665,15 @@ const EmergencyManager = () => {
                                 </div>
                                 <div className="space-y-2">
                                     {activeAlerts.map(alert => {
-                                        // Get alert type styling
-                                        const getAlertTypeBadge = (type) => {
-                                            const types = {
-                                                emergency: { label: '🚨 Emergency', className: 'bg-red-100 text-red-700' },
-                                                fire: { label: '🔥 Fire', className: 'bg-orange-100 text-orange-700' },
-                                                earthquake: { label: '🌍 Earthquake', className: 'bg-amber-100 text-amber-700' },
-                                                flood: { label: '🌊 Flood', className: 'bg-blue-100 text-blue-700' },
-                                                typhoon: { label: '🌀 Typhoon', className: 'bg-purple-100 text-purple-700' },
-                                                drill: { label: '🔔 Drill', className: 'bg-yellow-100 text-yellow-700' },
-                                            };
-                                            return types[type] || types.emergency;
-                                        };
-                                        const typeBadge = getAlertTypeBadge(alert.alert_type);
+                                        const typeBadge = ALERT_TYPES[alert.alert_type] || ALERT_TYPES.emergency;
+                                        const TypeIcon = typeBadge.icon;
                                         
                                         return (
                                             <div key={alert.id} className="bg-white rounded-lg p-3 border border-red-200 shadow-sm">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="flex-1 min-w-0">
-                                                        <span className={cn("inline-block px-2 py-0.5 text-xs font-medium rounded mb-1", typeBadge.className)}>
+                                                        <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded mb-1", typeBadge.className)}>
+                                                            <TypeIcon className={cn("w-3 h-3", typeBadge.iconColor)} />
                                                             {typeBadge.label}
                                                         </span>
                                                         <p className="font-medium text-gray-900 text-sm truncate">{alert.title}</p>
@@ -916,18 +928,51 @@ const EmergencyManager = () => {
                     <div className="space-y-4">
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Alert Type *</label>
-                            <select
-                                value={alertType}
-                                onChange={(e) => setAlertType(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                            >
-                                <option value="emergency">🚨 General Emergency</option>
-                                <option value="fire">🔥 Fire</option>
-                                <option value="earthquake">🌍 Earthquake</option>
-                                <option value="flood">🌊 Flood</option>
-                                <option value="typhoon">🌀 Typhoon</option>
-                                <option value="drill">🔔 Drill</option>
-                            </select>
+                            <div className="relative" ref={alertTypeDropdownRef}>
+                                <button
+                                    type="button"
+                                    onClick={() => setAlertTypeDropdownOpen(!alertTypeDropdownOpen)}
+                                    className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        {(() => {
+                                            const selected = ALERT_TYPES[alertType];
+                                            const SelectedIcon = selected.icon;
+                                            return (
+                                                <>
+                                                    <SelectedIcon className={cn("w-4 h-4", selected.iconColor)} />
+                                                    <span className="text-sm font-medium text-gray-900">{alertType === 'emergency' ? 'General Emergency' : selected.label}</span>
+                                                </>
+                                            );
+                                        })()}
+                                    </span>
+                                    <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform", alertTypeDropdownOpen && "rotate-180")} />
+                                </button>
+                                {alertTypeDropdownOpen && (
+                                    <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+                                        {Object.entries(ALERT_TYPES).map(([key, type]) => {
+                                            const Icon = type.icon;
+                                            return (
+                                                <button
+                                                    key={key}
+                                                    type="button"
+                                                    onClick={() => { setAlertType(key); setAlertTypeDropdownOpen(false); }}
+                                                    className={cn(
+                                                        "w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-gray-50 transition-colors",
+                                                        alertType === key && "bg-gray-50 font-medium"
+                                                    )}
+                                                >
+                                                    <span className={cn("flex items-center justify-center w-6 h-6 rounded", type.className)}>
+                                                        <Icon className={cn("w-3.5 h-3.5", type.iconColor)} />
+                                                    </span>
+                                                    <span className="text-gray-900">{key === 'emergency' ? 'General Emergency' : type.label}</span>
+                                                    {alertType === key && <span className="ml-auto text-red-600">✓</span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Alert Title *</label>

@@ -67,7 +67,7 @@ export const Button = ({
       {...props}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? '#800000' : '#fff'} />
+        <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? '#B22222' : '#fff'} />
       ) : (
         <Text className={`${sStyles.text} ${vStyles.text} ${textClassName}`}>
           {children}

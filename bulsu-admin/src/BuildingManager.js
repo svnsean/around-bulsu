@@ -1,7 +1,7 @@
 // BuildingManager.js - Modern Tailwind UI with Supabase
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase, subscribeToTable, uploadImage } from './supabase';
-import { Search, Plus, Edit2, Trash2, X, Building2, DoorOpen, Upload, Image } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, X, Building2, DoorOpen, Upload, Image, Archive, RotateCcw } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import { Input, Textarea } from './components/ui/Input';
 import { Card, CardContent } from './components/ui/Card';
@@ -17,6 +17,7 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
   const [editFacility, setEditFacility] = useState('');
   const [editKeyword, setEditKeyword] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const fileInputRef = useRef(null);
   const { addToast } = useToast();
@@ -199,15 +200,32 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
   };
 
   const handleDeleteBuilding = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this building?')) return;
+    if (!window.confirm('Archive this building? It can be restored later from the Archive view.')) return;
 
     try {
-      const { error } = await supabase.from('buildings').delete().eq('id', id);
+      const { error } = await supabase
+        .from('buildings')
+        .update({ is_archived: true, archived_at: new Date().toISOString() })
+        .eq('id', id);
       if (error) throw error;
-      addToast({ title: 'Deleted', description: 'Building deleted successfully', variant: 'success' });
+      addToast({ title: 'Archived', description: 'Building moved to archive', variant: 'success' });
     } catch (error) {
-      console.error('Error deleting building:', error);
-      addToast({ title: 'Error', description: 'Failed to delete building', variant: 'error' });
+      console.error('Error archiving building:', error);
+      addToast({ title: 'Error', description: 'Failed to archive building', variant: 'error' });
+    }
+  };
+
+  const handleRestoreBuilding = async (id) => {
+    try {
+      const { error } = await supabase
+        .from('buildings')
+        .update({ is_archived: false, archived_at: null })
+        .eq('id', id);
+      if (error) throw error;
+      addToast({ title: 'Restored', description: 'Building restored successfully', variant: 'success' });
+    } catch (error) {
+      console.error('Error restoring building:', error);
+      addToast({ title: 'Error', description: 'Failed to restore building', variant: 'error' });
     }
   };
 
@@ -217,6 +235,8 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
   };
 
   const filteredBuildings = buildings.filter(building => {
+    const archived = building.is_archived === true;
+    if (showArchived ? !archived : archived) return false;
     if (!searchQuery.trim()) return true;
     const query = normalizeForSearch(searchQuery);
     if (normalizeForSearch(building.name).includes(query)) return true;
@@ -244,7 +264,9 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Building Manager</h2>
               <p className="text-sm text-gray-500">
-                {buildings.length} building{buildings.length !== 1 ? 's' : ''} registered
+                {showArchived
+                  ? `${buildings.filter(b => b.is_archived).length} archived`
+                  : `${buildings.filter(b => !b.is_archived).length} building${buildings.filter(b => !b.is_archived).length !== 1 ? 's' : ''} registered`}
               </p>
             </div>
           </div>
@@ -260,10 +282,20 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
                 className="pl-10 w-72"
               />
             </div>
-            <Button onClick={handleAddBuilding}>
-              <Plus className="w-4 h-4" />
-              Add Building
+            <Button
+              variant={showArchived ? 'secondary' : 'outline'}
+              onClick={() => { setShowArchived(!showArchived); setSearchQuery(''); }}
+              className={showArchived ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' : ''}
+            >
+              <Archive className="w-4 h-4" />
+              {showArchived ? 'View Archive' : 'Archive'}
             </Button>
+            {!showArchived && (
+              <Button onClick={handleAddBuilding}>
+                <Plus className="w-4 h-4" />
+                Add Building
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -299,18 +331,31 @@ const BuildingManager = ({ editBuildingId, onBuildingEdited, onSwitchToMapEditor
                   <div className="flex items-start justify-between mb-2">
                     <h3 className="font-semibold text-gray-900 line-clamp-1">{building.name}</h3>
                     <div className="flex gap-1">
-                      <button
-                        onClick={() => startEdit(building)}
-                        className="p-1.5 text-gray-400 hover:text-maroon-800 hover:bg-maroon-50 rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteBuilding(building.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {showArchived ? (
+                        <button
+                          onClick={() => handleRestoreBuilding(building.id)}
+                          title="Restore building"
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEdit(building)}
+                            className="p-1.5 text-gray-400 hover:text-maroon-800 hover:bg-maroon-50 rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBuilding(building.id)}
+                            title="Archive building"
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          >
+                            <Archive className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   

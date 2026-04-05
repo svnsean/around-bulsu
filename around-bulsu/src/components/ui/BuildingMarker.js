@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // BulSU Brand Colors
 export const BULSU_COLORS = {
-  maroon: '#800000',
+  maroon: '#B22222',
   gold: '#FFD700',
   maroonDark: '#4d0000',
   goldDark: '#DAA520',

@@ -5,7 +5,7 @@ import { View, Text } from 'react-native';
 export const Card = ({ children, className = '', ...props }) => {
   return (
     <View
-      className={`bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden ${className}`}
+      className={`bg-white dark:bg-neutral-800 rounded-2xl shadow-md border border-gray-100 dark:border-neutral-700 overflow-hidden ${className}`}
       {...props}
     >
       {children}

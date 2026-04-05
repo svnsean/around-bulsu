@@ -14,6 +14,8 @@ import {
 import MapboxGL from '@rnmapbox/maps';
 import { Card, Icon } from '../components/ui';
 import { findPath, pathToGeoJSON, getPathBounds, getDistance } from '../lib/pathfinding';
+import { subscribeToTable } from '../supabase';
+import { useSettings } from '../context/SettingsContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -21,11 +23,15 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BuildingInfoScreen = ({ route, navigation }) => {
   const { building, userLocation, nodes, edges, blockages = [] } = route.params;
+  const { mapStyle, colors } = useSettings();
+  // Detect if navigated from Info tab (InfoStack has no ARNavigation screen)
+  const fromInfoTab = navigation.getState()?.routes?.[0]?.name === 'InfoMain';
   const userCoords = Array.isArray(userLocation)
     ? userLocation
     : userLocation
       ? [userLocation.longitude, userLocation.latitude]
       : null;
+  const [liveBlockages, setLiveBlockages] = useState(blockages);
   const [distance, setDistance] = useState(null);
   const [pathPreview, setPathPreview] = useState(null);
   const [userConnectorLine, setUserConnectorLine] = useState(null);  // Dotted line from user to first node
@@ -41,13 +47,21 @@ const BuildingInfoScreen = ({ route, navigation }) => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
   }, []);
 
+  // Subscribe to live blockages from Supabase
+  useEffect(() => {
+    const unsub = subscribeToTable('blockages', (data) => {
+      setLiveBlockages(data.filter(b => b.active));
+    });
+    return () => unsub();
+  }, []);
+
   // Get building images (use actual images from Firebase or empty array)
   const buildingImages = building.images && building.images.length > 0 ? building.images : [];
 
   useEffect(() => {
     calculateDistance();
     generatePathPreview();
-  }, []);
+  }, [liveBlockages]);
 
   // Calculate distance from user to building
   const calculateDistance = () => {
@@ -74,7 +88,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
       to: [building.longitude, building.latitude],
       nodes: nodes.length,
       edges: edges.length,
-      blockages: blockages?.length || 0
+      blockages: liveBlockages?.length || 0
     });
 
     try {
@@ -84,7 +98,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
         endCoords: [building.longitude, building.latitude],
         nodes,
         edges,
-        blockages,
+        blockages: liveBlockages,
         includeEndpoints: true
       });
 
@@ -139,21 +153,21 @@ const BuildingInfoScreen = ({ route, navigation }) => {
       userLocation: userCoords,
       nodes,
       edges,
-      blockages,
+      blockages: liveBlockages,
     });
   };
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 pt-12 pb-3 bg-white border-b border-gray-100">
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 48, paddingBottom: 12, backgroundColor: colors.bg, borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <TouchableOpacity 
           className="w-10 h-10 items-center justify-center"
           onPress={() => navigation.goBack()}
         >
-          <Icon name="chevron-left" size={28} color="#800000" />
+          <Icon name="chevron-left" size={28} color="#B22222" />
         </TouchableOpacity>
-        <Text className="flex-1 text-lg font-semibold text-gray-800 text-center mx-3" numberOfLines={1}>
+        <Text style={{ flex: 1, fontSize: 18, fontWeight: '600', color: colors.textPrimary, textAlign: 'center', marginHorizontal: 12 }} numberOfLines={1}>
           {building.name}
         </Text>
         <View className="w-10" />
@@ -181,13 +195,13 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
         {/* Building Info */}
         <View className="p-5">
-          <Text className="text-2xl font-bold text-gray-800 mb-3">
+          <Text style={{ fontSize: 24, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 }}>
             {building.name}
           </Text>
           
           {distance !== null && (
             <View className="flex-row items-center mb-4">
-              <Icon name="map-pin" size={18} color="#800000" style={{ marginRight: 6 }} />
+              <Icon name="map-pin" size={18} color="#B22222" style={{ marginRight: 6 }} />
               <Text className="text-base text-maroon-800 font-semibold">
                 {distance} meters away
               </Text>
@@ -195,7 +209,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
           )}
 
           {building.description && (
-            <Text className="text-base text-gray-600 leading-6">
+            <Text style={{ fontSize: 16, color: colors.textSecondary, lineHeight: 24 }}>
               {building.description}
             </Text>
           )}
@@ -203,19 +217,19 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
         {/* Map Preview - Larger with full path bounds */}
         <View className="px-5 mb-5">
-          <Text className="text-lg font-bold text-gray-800 mb-3">
-            Route Preview
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 }}>
+            {fromInfoTab ? 'Location' : 'Route Preview'}
           </Text>
           <Card className="h-72 overflow-hidden rounded-2xl">
             {loading ? (
-              <View className="flex-1 items-center justify-center bg-gray-50">
-                <ActivityIndicator size="large" color="#800000" />
-                <Text className="text-gray-500 text-sm mt-3">Calculating route...</Text>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface }}>
+                <ActivityIndicator size="large" color="#B22222" />
+                <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: 12 }}>Calculating route...</Text>
               </View>
             ) : (
               <MapboxGL.MapView
                 style={{ flex: 1 }}
-                styleURL={MapboxGL.StyleURL.Street}
+                styleURL={mapStyle}
                 logoEnabled={false}
                 scrollEnabled={false}
                 pitchEnabled={false}
@@ -242,7 +256,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
                     <MapboxGL.LineLayer
                       id="userConnectorLayer"
                       style={{
-                        lineColor: '#800000',
+                        lineColor: '#B22222',
                         lineWidth: 4,
                         lineCap: 'round',
                         lineJoin: 'round',
@@ -259,7 +273,7 @@ const BuildingInfoScreen = ({ route, navigation }) => {
                     <MapboxGL.LineLayer
                       id="pathPreviewLayer"
                       style={{
-                        lineColor: '#800000',
+                        lineColor: '#B22222',
                         lineWidth: 5,
                         lineCap: 'round',
                         lineJoin: 'round',
@@ -270,24 +284,17 @@ const BuildingInfoScreen = ({ route, navigation }) => {
 
                 {/* User location marker */}
                 {userCoords && (
-                  <MapboxGL.PointAnnotation
-                    id="userMarker"
-                    coordinate={userCoords}
-                  >
-                    <View className="w-5 h-5 rounded-full bg-blue-500 border-3 border-white shadow-lg items-center justify-center">
-                      <View className="w-2 h-2 rounded-full bg-white" />
-                    </View>
-                  </MapboxGL.PointAnnotation>
+                  <MapboxGL.LocationPuck />
                 )}
 
-                {/* Building marker */}
+                {/* Building marker — location pin */}
                 <MapboxGL.PointAnnotation
                   id="buildingMarker"
                   coordinate={[building.longitude, building.latitude]}
                 >
                   <View className="items-center">
                     <View className="w-8 h-8 rounded-full bg-maroon-800 border-3 border-white shadow-lg items-center justify-center">
-                      <Icon name="flag" size={14} color="#FFFFFF" />
+                      <Icon name="map-pin" size={14} color="#FFFFFF" />
                     </View>
                     <View className="w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-maroon-800 -mt-0.5" />
                   </View>
@@ -295,14 +302,6 @@ const BuildingInfoScreen = ({ route, navigation }) => {
               </MapboxGL.MapView>
             )}
           </Card>
-          {distance && !loading && (
-            <View className="flex-row items-center justify-center mt-3 bg-gray-100 py-2 px-4 rounded-full self-center">
-              <Icon name="navigate" size={14} color="#800000" style={{ marginRight: 6 }} />
-              <Text className="text-sm text-gray-700">
-                <Text className="font-bold text-maroon-800">{distance}m</Text> walking distance
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Rooms Section */}
@@ -351,30 +350,45 @@ const BuildingInfoScreen = ({ route, navigation }) => {
         )}
       </ScrollView>
 
-      {/* Bottom Navigation Button - positioned above floating tab bar */}
-      <View className="absolute bottom-24 left-0 right-0 p-5 bg-white border-t border-gray-100 shadow-lg">
-        <TouchableOpacity
-          className={`flex-row items-center justify-center py-4 rounded-xl ${launchingAR ? 'bg-gray-400' : 'bg-maroon-800 active:bg-maroon-900'}`}
-          onPress={handleStartNavigation}
-          disabled={launchingAR}
-        >
-          {launchingAR ? (
-            <>
-              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text className="text-white text-lg font-bold">
-                Launching AR...
-              </Text>
-            </>
-          ) : (
-            <>
-              <Icon name="navigate" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text className="text-white text-lg font-bold">
-                Start AR Navigation
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+      {/* Start AR Navigation Button — pill style, hidden when from Info tab */}
+      {!fromInfoTab && (
+        <View style={{ position: 'absolute', bottom: 20, right: 16 }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: launchingAR ? '#9CA3AF' : '#B22222',
+              paddingHorizontal: 20,
+              height: 48,
+              borderRadius: 24,
+              elevation: 10,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.2,
+              shadowRadius: 4,
+            }}
+            onPress={handleStartNavigation}
+            disabled={launchingAR}
+          >
+            {launchingAR ? (
+              <>
+                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Inter_700Bold' }}>
+                  Launching...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Icon name="navigate" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '700', fontFamily: 'Inter_700Bold' }}>
+                  Start AR
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };

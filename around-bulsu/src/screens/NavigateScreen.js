@@ -5,10 +5,10 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { View, Alert, ActivityIndicator, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { DrawerActions } from '@react-navigation/native';
 import { supabase, subscribeToTable } from '../supabase';
-import SearchBottomSheet from '../components/SearchBottomSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { BSU_CENTER, CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
 import { BULSU_COLORS } from '../components/ui/BuildingMarker';
+import { useSettings } from '../context/SettingsContext';
 
 // Mapbox is initialized in App.js via initializeMapbox()
 
@@ -20,6 +20,7 @@ const LABEL_MIN_ZOOM = 15;   // Labels only show at this zoom and higher
 const buildingMarkerIcon = require('../../assets/images/building-marker.png');
 
 const NavigateScreen = ({ navigation }) => {
+  const { mapStyle, triggerHaptic, colors } = useSettings();
   const [userLocation, setUserLocation] = useState(null);
   const [buildings, setBuildings] = useState([]);
   const [nodes, setNodes] = useState([]);
@@ -29,7 +30,7 @@ const NavigateScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const [currentZoom, setCurrentZoom] = useState(17);
-  const bottomSheetRef = useRef(null);
+  const zoomRef = useRef(17);
   const mapRef = useRef(null);
   const cameraRef = useRef(null);
 
@@ -125,23 +126,9 @@ const NavigateScreen = ({ navigation }) => {
     });
   };
 
-  // Handle search result selection
-  const handleSearchSelect = (building) => {
-    bottomSheetRef.current?.close();
-    const userCoords = userLocation
-      ? [userLocation.longitude, userLocation.latitude]
-      : null;
-    navigation.navigate('BuildingInfo', { 
-      building,
-      userLocation: userCoords,
-      nodes,
-      edges,
-      blockages
-    });
-  };
-
   const centerOnUser = () => {
     if (userLocation && cameraRef.current) {
+      triggerHaptic('light');
       cameraRef.current.setCamera({
         centerCoordinate: [userLocation.longitude, userLocation.latitude],
         zoomLevel: 18,
@@ -150,9 +137,36 @@ const NavigateScreen = ({ navigation }) => {
     }
   };
 
+  const handleZoomIn = () => {
+    triggerHaptic('light');
+    if (cameraRef.current) {
+      const newZoom = Math.min(zoomRef.current + 1, 20);
+      zoomRef.current = newZoom;
+      setCurrentZoom(newZoom);
+      cameraRef.current.setCamera({
+        zoomLevel: newZoom,
+        animationDuration: 300
+      });
+    }
+  };
+
+  const handleZoomOut = () => {
+    triggerHaptic('light');
+    if (cameraRef.current) {
+      const newZoom = Math.max(zoomRef.current - 1, 10);
+      zoomRef.current = newZoom;
+      setCurrentZoom(newZoom);
+      cameraRef.current.setCamera({
+        zoomLevel: newZoom,
+        animationDuration: 300
+      });
+    }
+  };
+
   // Handle zoom level changes for conditional rendering
   const handleRegionChange = useCallback((feature) => {
     if (feature?.properties?.zoomLevel) {
+      zoomRef.current = feature.properties.zoomLevel;
       setCurrentZoom(feature.properties.zoomLevel);
     }
   }, []);
@@ -162,14 +176,13 @@ const NavigateScreen = ({ navigation }) => {
     if (!feature?.geometry?.coordinates || !cameraRef.current) return;
     
     const [lng, lat] = feature.geometry.coordinates;
-    const clusterId = feature.properties?.cluster_id;
     const pointCount = feature.properties?.point_count || 0;
     
-    // Calculate zoom level based on cluster size
-    // Smaller clusters need less zoom to expand
-    let targetZoom = currentZoom + 2;
-    if (pointCount > 10) targetZoom = currentZoom + 3;
-    if (pointCount > 20) targetZoom = currentZoom + 4;
+    // Calculate zoom level based on cluster size using ref for fresh value
+    const curZoom = zoomRef.current;
+    let targetZoom = curZoom + 2;
+    if (pointCount > 10) targetZoom = curZoom + 3;
+    if (pointCount > 20) targetZoom = curZoom + 4;
     
     // Animate to cluster location with increased zoom
     cameraRef.current.setCamera({
@@ -178,33 +191,32 @@ const NavigateScreen = ({ navigation }) => {
       animationDuration: 500,
       animationMode: 'flyTo'
     });
-  }, [currentZoom]);
+  }, []);
 
   return (
     <View className="flex-1 bg-white">
       {/* Loading Overlay */}
       {isLoading && (
         <View className="absolute inset-0 bg-white/95 items-center justify-center z-50">
-          <ActivityIndicator size="large" color="#800000" />
+          <ActivityIndicator size="large" color="#B22222" />
           <Text className="mt-3 text-base text-maroon-800 font-semibold">
             Loading buildings...
           </Text>
         </View>
       )}
 
-      {/* Menu Button */}
+      {/* Menu Button — circle, right side, same size as re-center */}
       <TouchableOpacity
-        className="absolute top-12 left-4 w-11 h-11 rounded-xl bg-white items-center justify-center shadow-lg z-10"
-        style={styles.menuShadow}
+        style={[styles.menuButton, { backgroundColor: colors.card }]}
         onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
       >
-        <Ionicons name="menu" size={28} color="#800000" />
+        <Ionicons name="menu" size={24} color="#B22222" />
       </TouchableOpacity>
 
       <MapboxGL.MapView 
         ref={mapRef}
         style={{ flex: 1 }} 
-        styleURL={MapboxGL.StyleURL.Street}
+        styleURL={mapStyle}
         logoEnabled={false}
         attributionEnabled={false}
         onDidFinishLoadingMap={() => {
@@ -223,9 +235,9 @@ const NavigateScreen = ({ navigation }) => {
           animationDuration={1000}
         />
         
-        <MapboxGL.UserLocation 
-          visible={true}
-          showsUserHeadingIndicator={true}
+        <MapboxGL.LocationPuck 
+          puckBearingEnabled={true}
+          puckBearing="heading"
         />
 
         {/* Register custom building marker image */}
@@ -254,7 +266,7 @@ const NavigateScreen = ({ navigation }) => {
               }
             }}
           >
-            {/* Cluster circles - BulSU maroon with gold border */}
+            {/* Cluster circles - BulSU maroon with white border */}
             <MapboxGL.CircleLayer
               id="clusters"
               filter={['has', 'point_count']}
@@ -263,13 +275,13 @@ const NavigateScreen = ({ navigation }) => {
                 circleRadius: [
                   'step',
                   ['get', 'point_count'],
-                  20,   // Base size for small clusters
-                  5, 25,  // 5+ points = 25px
-                  10, 30, // 10+ points = 30px
-                  20, 35  // 20+ points = 35px
+                  15,   // Base size for small clusters
+                  5, 18,  // 5+ points = 18px
+                  10, 22, // 10+ points = 22px
+                  20, 26  // 20+ points = 26px
                 ],
-                circleStrokeWidth: 3,
-                circleStrokeColor: BULSU_COLORS.gold,
+                circleStrokeWidth: 2.5,
+                circleStrokeColor: '#FFFFFF',
               }}
             />
             
@@ -287,15 +299,14 @@ const NavigateScreen = ({ navigation }) => {
               }}
             />
 
-            {/* Unclustered building markers - white circle background */}
+            {/* White circle background behind building markers */}
             <MapboxGL.CircleLayer
               id="unclustered-circle"
               filter={['!', ['has', 'point_count']]}
               style={{
                 circleColor: '#FFFFFF',
-                circleRadius: 16,
-                circleStrokeWidth: 2.5,
-                circleStrokeColor: BULSU_COLORS.maroon,
+                circleRadius: 22,
+                circleStrokeWidth: 0,
                 circlePitchAlignment: 'map',
               }}
             />
@@ -307,17 +318,18 @@ const NavigateScreen = ({ navigation }) => {
               style={{
                 // Icon settings
                 iconImage: 'building-marker',
-                iconSize: 0.04,
+                iconSize: 0.07,
                 iconAllowOverlap: true,
                 iconIgnorePlacement: true,
                 // Text/label settings - combined in same layer to avoid collision issues
                 textField: ['get', 'name'],
                 textSize: 11,
-                textFont: ['DIN Pro Medium', 'Arial Unicode MS Regular'],
-                textColor: '#374151',
+                textFont: ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+                textColor: '#1F2937',
                 textHaloColor: '#FFFFFF',
-                textHaloWidth: 1.5,
-                textOffset: [0, 2.2],
+                textHaloWidth: 1,
+                textHaloBlur: 0.3,
+                textOffset: [0, 2.5],
                 textAnchor: 'top',
                 textMaxWidth: 10,
                 textAllowOverlap: false,
@@ -330,48 +342,101 @@ const NavigateScreen = ({ navigation }) => {
         )}
       </MapboxGL.MapView>
 
-      {/* Outside Campus Warning */}
+      {/* Outside Campus Warning — pill, centered */}
       {isOutsideCampus && (
-        <View className="absolute top-12 left-16 right-4 bg-amber-500 p-3 rounded-lg items-center shadow-lg flex-row justify-center">
-          <Ionicons name="warning" size={20} color="#fff" style={{ marginRight: 6 }} />
-          <Text className="text-white font-bold text-sm">
-            You are outside the campus
+        <View style={styles.warningPill}>
+          <Ionicons name="warning" size={16} color="#fff" style={{ marginRight: 4 }} />
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, fontFamily: 'Inter_700Bold' }}>
+            Outside campus
           </Text>
         </View>
       )}
 
-      {/* Center on User Button */}
-      <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
-        <Ionicons name="locate" size={24} color="#fff" />
-      </TouchableOpacity>
+      {/* Zoom Buttons — vertical pill above re-center */}
+      <View style={[styles.zoomPill, { backgroundColor: colors.card }]}>
+        <TouchableOpacity style={styles.zoomBtn} onPress={handleZoomIn}>
+          <Ionicons name="add" size={22} color="#B22222" />
+        </TouchableOpacity>
+        <View style={{ height: 1, backgroundColor: colors.border }} />
+        <TouchableOpacity style={styles.zoomBtn} onPress={handleZoomOut}>
+          <Ionicons name="remove" size={22} color="#B22222" />
+        </TouchableOpacity>
+      </View>
 
-      {/* Search Bottom Sheet */}
-      <SearchBottomSheet
-        ref={bottomSheetRef}
-        buildings={buildings}
-        onSelectBuilding={handleSearchSelect}
-      />
+      {/* Center on User Button */}
+      <TouchableOpacity style={[styles.centerButton, { backgroundColor: colors.card }]} onPress={centerOnUser}>
+        <Ionicons name="locate" size={24} color="#B22222" />
+      </TouchableOpacity>
     </View>
   );
 };
 
-// Keep minimal styles for shadow (NativeWind shadow classes limited on Android)
 const styles = StyleSheet.create({
-  menuShadow: {
+  menuButton: {
+    position: 'absolute',
+    top: 52,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
+  },
+  warningPill: {
+    position: 'absolute',
+    top: 56,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 24,
     elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    zIndex: 10,
+  },
+  zoomPill: {
+    position: 'absolute',
+    bottom: 80,
+    right: 16,
+    borderRadius: 24,
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  zoomBtn: {
+    width: 48,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   centerButton: {
     position: 'absolute',
-    bottom: 200,
+    bottom: 20,
     right: 16,
-    backgroundColor: '#3b82f6',
-    padding: 12,
-    borderRadius: 12,
-    elevation: 5
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
 });
 

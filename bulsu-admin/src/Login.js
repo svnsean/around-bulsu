@@ -1,6 +1,6 @@
 // Login.js - Inline styles for reliable rendering
 import React, { useState } from 'react';
-import { MapPin, Lock, User, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, Eye, EyeOff } from 'lucide-react';
 
 // Hardcoded credentials
 const ADMIN_USERNAME = 'admin';
@@ -56,17 +56,7 @@ const Login = ({ onLogin }) => {
       }} className="login-branding">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{
-              width: 48,
-              height: 48,
-              background: colors.gold,
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <MapPin size={28} color={colors.maroon} />
-            </div>
+            <img src="/logo512.png" alt="ARound BulSU" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'contain' }} />
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: 0 }}>ARound BulSU</h1>
               <p style={{ fontSize: 14, color: '#ffb3b3', margin: 0 }}>Admin Dashboard</p>
@@ -85,18 +75,18 @@ const Login = ({ onLogin }) => {
           }}>
             <h2 style={{ fontSize: 20, fontWeight: 600, color: '#fff', marginBottom: 12 }}>Campus Navigation System</h2>
             <p style={{ color: '#ffb3b3', lineHeight: 1.6, margin: 0 }}>
-              Manage buildings, navigation nodes, emergency zones, and announcements for the Bulacan State University AR navigation app.
+            Manage building information, trigger emergency alerts, and update campus data for the ARound BulSU navigation app.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 16, border: '1px solid rgba(255,255,255,0.1)' }}>
               <p style={{ fontSize: 28, fontWeight: 700, color: colors.gold, margin: 0 }}>AR</p>
-              <p style={{ color: '#ffb3b3', fontSize: 14, margin: 0 }}>Navigation</p>
+              <p style={{ color: '#ffb3b3', fontSize: 14, margin: 0 }}>SmartNavigation</p>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 16, border: '1px solid rgba(255,255,255,0.1)' }}>
-              <p style={{ fontSize: 28, fontWeight: 700, color: colors.gold, margin: 0 }}>24/7</p>
-              <p style={{ color: '#ffb3b3', fontSize: 14, margin: 0 }}>Availability</p>
+              <p style={{ fontSize: 28, fontWeight: 700, color: colors.gold, margin: 0 }}>Emergency</p>
+              <p style={{ color: '#ffb3b3', fontSize: 14, margin: 0 }}>Evacuation Management</p>
             </div>
           </div>
         </div>
@@ -123,7 +113,8 @@ const Login = ({ onLogin }) => {
             border: '1px solid #e5e7eb',
           }}>
             <div style={{ textAlign: 'center', marginBottom: 32 }}>
-              <h2 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Welcome back</h2>
+              <img src="/logo512.png" alt="ARound BulSU" style={{ width: 80, height: 80, objectFit: 'contain', margin: '0 auto 16px' }} />
+              <h2 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: 0 }}>Hello, Welcome!</h2>
               <p style={{ color: '#6b7280', marginTop: 8 }}>Sign in to access the admin panel</p>
             </div>
             
@@ -250,25 +241,7 @@ const Login = ({ onLogin }) => {
               </button>
             </form>
             
-            {/* Demo credentials */}
-            <div style={{
-              marginTop: 24,
-              paddingTop: 24,
-              borderTop: '1px solid #e5e7eb',
-            }}>
-              <div style={{
-                background: '#fffbeb',
-                borderRadius: 8,
-                padding: 16,
-                border: '1px solid #fde68a',
-              }}>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#92400e', margin: 0 }}>Demo Credentials</p>
-                <p style={{ fontSize: 14, color: '#a16207', marginTop: 8, marginBottom: 0 }}>
-                  Username: <code style={{ background: '#fef3c7', padding: '2px 6px', borderRadius: 4 }}>admin</code><br/>
-                  Password: <code style={{ background: '#fef3c7', padding: '2px 6px', borderRadius: 4 }}>bulsuadmin123</code>
-                </p>
-              </div>
-            </div>
+
           </div>
         </div>
       </div>

@@ -50,8 +50,8 @@ export const PullToRefresh = ({
         <RefreshControl
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
-          colors={['#800000']}
-          tintColor="#800000"
+          colors={['#B22222']}
+          tintColor="#B22222"
           progressBackgroundColor="#fff"
         />
       }
@@ -90,7 +90,7 @@ export const RefreshIndicator = ({ refreshing }) => {
   return (
     <View style={styles.indicatorContainer}>
       <Animated.View style={{ transform: [{ rotate: spin }] }}>
-        <Ionicons name="refresh" size={24} color="#800000" />
+        <Ionicons name="refresh" size={24} color="#B22222" />
       </Animated.View>
     </View>
   );

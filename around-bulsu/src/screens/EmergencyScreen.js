@@ -11,15 +11,16 @@ import {
 import MapboxGL from '@rnmapbox/maps';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
+import { DrawerActions } from '@react-navigation/native';
 import { supabase, subscribeToTable } from '../supabase';
 import { CAMPUS_BOUNDS, isWithinCampus } from '../config/mapbox';
+import { useSettings } from '../context/SettingsContext';
 
 // Import shared pathfinding utilities
 import {
   findPath,
   getDistance,
   isPointInPolygon,
-  isEdgeBlocked
 } from '../lib/pathfinding';
 
 // Mapbox is initialized in App.js
@@ -27,6 +28,7 @@ import {
 // getDistance is now imported from pathfinding.js
 
 const EmergencyScreen = ({ navigation, route }) => {
+  const { mapStyle, triggerHaptic, colors } = useSettings();
   const [userLocation, setUserLocation] = useState(null);
   const [evacuationZones, setEvacuationZones] = useState([]);
   const [blockages, setBlockages] = useState([]);
@@ -111,14 +113,6 @@ const EmergencyScreen = ({ navigation, route }) => {
     };
   }, []);
 
-  // Check if an edge is blocked using the shared utility
-  const checkEdgeBlocked = (edge) => {
-    const activeBlockages = blockages.filter(b => b.active);
-    const nodesMap = {};
-    nodes.forEach(n => { nodesMap[n.id] = n; });
-    return isEdgeBlocked(edge, activeBlockages, nodesMap);
-  };
-
   // Check for auto-trigger evacuation from critical alert
   useEffect(() => {
     if (route?.params?.triggerEvacuation) {
@@ -146,8 +140,6 @@ const EmergencyScreen = ({ navigation, route }) => {
       return;
     }
 
-    const validEdges = edges.filter(e => !checkEdgeBlocked(e));
-    
     navigation.navigate('ARNavigation', {
       building: {
         name: nearestZone.name,
@@ -157,7 +149,7 @@ const EmergencyScreen = ({ navigation, route }) => {
       },
       userLocation,
       nodes,
-      edges: validEdges,
+      edges,
       blockages: blockages.filter(b => b.active),
       isEmergency: true,
       skipIntro: true
@@ -275,8 +267,6 @@ const EmergencyScreen = ({ navigation, route }) => {
         { 
           text: 'Start Navigation',
           onPress: () => {
-            const validEdges = edges.filter(e => !checkEdgeBlocked(e));
-            
             // Launch AR Navigation for emergency evacuation
             navigation.navigate('ARNavigation', {
               building: {
@@ -287,7 +277,7 @@ const EmergencyScreen = ({ navigation, route }) => {
               },
               userLocation,
               nodes,
-              edges: validEdges,
+              edges,
               blockages: blockages.filter(b => b.active),
               isEmergency: true,
               skipIntro: true  // Skip AR intro for emergency - need to navigate quickly
@@ -329,7 +319,7 @@ const EmergencyScreen = ({ navigation, route }) => {
       {/* Map */}
       <MapboxGL.MapView 
         style={{ flex: 1 }}
-        styleURL={MapboxGL.StyleURL.Street}
+        styleURL={mapStyle}
         logoEnabled={false}
       >
         <MapboxGL.Camera
@@ -338,9 +328,9 @@ const EmergencyScreen = ({ navigation, route }) => {
           animationDuration={1000}
         />
 
-        <MapboxGL.UserLocation 
-          visible={true}
-          showsUserHeadingIndicator={true}
+        <MapboxGL.LocationPuck 
+          puckBearingEnabled={true}
+          puckBearing="heading"
         />
 
         {/* Evacuation Zones (Green) */}
@@ -398,6 +388,14 @@ const EmergencyScreen = ({ navigation, route }) => {
         })}
       </MapboxGL.MapView>
 
+      {/* Menu Button — circle, right side */}
+      <TouchableOpacity
+        style={[styles.menuButton, { backgroundColor: colors.card }]}
+        onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+      >
+        <Ionicons name="menu" size={24} color="#B22222" />
+      </TouchableOpacity>
+
       {/* Legend - only show when inside campus */}
       {!isOutsideCampus && (
         <View style={styles.legend}>
@@ -412,18 +410,20 @@ const EmergencyScreen = ({ navigation, route }) => {
         </View>
       )}
 
-      {/* Outside Campus Warning */}
+      {/* Outside Campus Warning — pill, centered */}
       {isOutsideCampus && (
-        <View style={styles.warningBanner}>
-          <Ionicons name="warning" size={20} color="#fff" />
-          <Text style={styles.warningText}>You are outside the campus</Text>
+        <View style={styles.warningPill}>
+          <Ionicons name="warning" size={16} color="#fff" style={{ marginRight: 4 }} />
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, fontFamily: 'Inter_700Bold' }}>
+            Outside campus
+          </Text>
         </View>
       )}
 
-      {/* Activate Evacuation Button */}
+      {/* Activate Evacuation Button — pill, right-aligned */}
       <TouchableOpacity style={styles.evacuateButton} onPress={handleActivateEvacuation}>
-        <Ionicons name="alert-circle" size={24} color="#fff" />
-        <Text style={styles.evacuateText}>Activate Evacuation</Text>
+        <Ionicons name="alert-circle" size={20} color="#fff" />
+        <Text style={styles.evacuateText}>Evacuate</Text>
       </TouchableOpacity>
     </View>
   );
@@ -432,6 +432,39 @@ const EmergencyScreen = ({ navigation, route }) => {
 const styles = {
   container: { flex: 1 },
   map: { flex: 1 },
+  menuButton: {
+    position: 'absolute',
+    top: 52,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  warningPill: {
+    position: 'absolute',
+    top: 56,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F59E0B',
+    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 24,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    zIndex: 10,
+  },
   userMarker: {
     width: 24,
     height: 24,
@@ -450,7 +483,7 @@ const styles = {
   },
   legend: {
     position: 'absolute',
-    top: 50,
+    top: 110,
     right: 16,
     backgroundColor: 'rgba(26, 26, 46, 0.9)',
     padding: 12,
@@ -471,44 +504,30 @@ const styles = {
     color: '#fff',
     fontSize: 12
   },
-  warningBanner: {
+  evacuateButton: {
     position: 'absolute',
-    top: 50,
-    left: 16,
+    bottom: 20,
     right: 16,
-    backgroundColor: '#f59e0b',
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 20,
+    height: 48,
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    zIndex: 100,
-    elevation: 100
-  },
-  warningText: {
-    color: '#fff',
-    fontWeight: '600'
-  },
-  evacuateButton: {
-    position: 'absolute',
-    bottom: 96,
-    left: 16,
-    right: 16,
-    backgroundColor: '#ef4444',
-    padding: 16,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
     zIndex: 10,
-    elevation: 10
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   evacuateText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600'
+    fontSize: 15,
+    fontWeight: '700',
+    fontFamily: 'Inter_700Bold',
   }
 };
 

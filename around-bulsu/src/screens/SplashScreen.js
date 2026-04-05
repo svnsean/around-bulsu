@@ -6,10 +6,12 @@ import {
   Animated,
   Dimensions,
   StyleSheet,
+  Image,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { useCameraPermissions } from 'expo-camera';
-import { Feather } from '@expo/vector-icons';
+
+const splashIcon = require('../../assets/images/splash-icon.png');
 
 const { width } = Dimensions.get('window');
 
@@ -104,7 +106,11 @@ const SplashScreen = ({ onReady }) => {
         ]}
         className="items-center mb-16"
       >
-        <Feather name="navigation" size={48} color="#ffffff" style={{ marginBottom: 24 }} />
+        <Image
+          source={splashIcon}
+          style={{ width: 120, height: 120, marginBottom: 24, borderRadius: 28, overflow: 'hidden' }}
+          resizeMode="cover"
+        />
 
         {/* App Name */}
         <Text className="text-4xl font-bold text-white mb-2 tracking-wide">
@@ -120,15 +126,12 @@ const SplashScreen = ({ onReady }) => {
         className="absolute bottom-32 items-center"
         style={{ width: width * 0.7 }}
       >
-        <View className="w-full h-1 bg-white/20 rounded-full overflow-hidden mb-3">
+        <View className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
           <Animated.View
             className="h-full bg-white rounded-full"
             style={{ width: progressWidth }}
           />
         </View>
-        <Text className="text-white/70 text-sm tracking-wide">
-          Initializing...
-        </Text>
       </View>
 
       {/* Footer */}

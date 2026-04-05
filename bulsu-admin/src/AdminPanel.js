@@ -1,6 +1,6 @@
 // AdminPanel.js - Modern Tailwind UI with Supabase
 import React, { useState } from 'react';
-import { Map, Building2, AlertTriangle, Info, LogOut, MapPin, ChevronRight } from 'lucide-react';
+import { Map, Building2, AlertTriangle, Info, LogOut, ChevronRight } from 'lucide-react';
 import MapEditor from './MapEditor';
 import BuildingManager from './BuildingManager';
 import EmergencyManager from './EmergencyManager';
@@ -43,12 +43,10 @@ const AdminPanel = ({ onLogout }) => {
         {/* Logo */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-gold-400 rounded-xl flex items-center justify-center shadow-lg">
-              <MapPin className="w-6 h-6 text-maroon-900" />
-            </div>
+            <img src="/logo512.png" alt="ARound BulSU" className="w-11 h-11 rounded-xl shadow-lg object-contain" />
             <div>
-              <h1 className="text-lg font-bold text-white">ARound BulSU Admin</h1>
-              <p className="text-xs text-maroon-200">Campus Management</p>
+              <h1 className="text-lg font-bold text-white">ARound BulSU</h1>
+              <p className="text-xs text-maroon-200">Admin Dashboard</p>
             </div>
           </div>
         </div>

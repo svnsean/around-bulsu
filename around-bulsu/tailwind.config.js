@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./App.{js,jsx,ts,tsx}",
     "./src/**/*.{js,jsx,ts,tsx}",
@@ -8,6 +9,12 @@ module.exports = {
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter_400Regular'],
+        medium: ['Inter_500Medium'],
+        semibold: ['Inter_600SemiBold'],
+        bold: ['Inter_700Bold'],
+      },
       colors: {
         maroon: {
           50: '#fdf2f2',
@@ -18,7 +25,7 @@ module.exports = {
           500: '#e53e3e',
           600: '#c53030',
           700: '#9b2c2c',
-          800: '#800000',
+          800: '#B22222',
           900: '#5a1a1a',
         },
         gold: {

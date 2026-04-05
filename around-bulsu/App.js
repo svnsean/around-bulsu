@@ -5,30 +5,36 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createDrawerNavigator, DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { NavigationContainer, getFocusedRouteNameFromRoute } from '@react-navigation/native';
-import { Text, View, StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Text, View, StyleSheet, Image, Switch, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Icon } from './src/components/ui';
 import { NetworkProvider } from './src/context/NetworkContext';
 import { ToastProvider } from './src/components/ui/Toast';
-import { AlertProvider } from './src/context/AlertContext';
-import AlertOverlay from './src/components/AlertOverlay';
-import CriticalAlertModal from './src/components/CriticalAlertModal';
+import { AlertProvider, useAlert } from './src/context/AlertContext';
+import { SettingsProvider, useSettings, useThemeColors, MAP_STYLES } from './src/context/SettingsContext';
+import EmergencyAlertModal from './src/components/EmergencyAlertModal';
+import SpotifyTabBar from './src/components/SpotifyTabBar';
 import { supabase, subscribeToTable } from './src/supabase';
+import * as Notifications from 'expo-notifications';
 
 // Initialize Mapbox at app startup
 import { initializeMapbox } from './src/config/mapbox';
 initializeMapbox();
 
-// Register background message handler early (outside component lifecycle)
-// This is critical for receiving notifications when app is in background/killed
-(async () => {
-  try {
-    const { registerBackgroundMessageHandler } = await import('./src/services/notificationService');
-    registerBackgroundMessageHandler();
-  } catch (e) {
-    console.log('Background handler setup skipped:', e.message);
-  }
-})();
+// Configure how notifications are presented when the app is in the foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // Import screens
 import SplashScreen from './src/screens/SplashScreen';
@@ -37,103 +43,232 @@ import BuildingInfoScreen from './src/screens/BuildingInfoScreen';
 import ARNavigationScreen from './src/screens/ARNavigationScreen';
 import EmergencyScreen from './src/screens/EmergencyScreen';
 import InfoScreen from './src/screens/InfoScreen';
+import SearchScreen from './src/screens/SearchScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 const Drawer = createDrawerNavigator();
 
-// Helper function to determine if tab bar should be hidden
-const getTabBarStyle = (route) => {
-  const routeName = getFocusedRouteNameFromRoute(route) ?? '';
-  // Hide tab bar when in AR Navigation screen
-  if (routeName === 'ARNavigation') {
-    return { display: 'none' };
-  }
-  return styles.tabBar;
+// Apply Inter as global default font for all Text components
+Text.defaultProps = Text.defaultProps ?? {};
+Text.defaultProps.style = { fontFamily: 'Inter_400Regular' };
+
+
+
+// Settings Screen
+const SettingsScreen = () => {
+  const insets = useSafeAreaInsets();
+  const { settings, updateSettings, isDark, colors, triggerHaptic } = useSettings();
+
+  const handleClearRecents = () => {
+    Alert.alert('Clear Recent Searches', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.removeItem('@around_bulsu/recent_searches');
+          triggerHaptic('success');
+        },
+      },
+    ]);
+  };
+
+  const handleClearFavorites = () => {
+    Alert.alert('Clear Favorites', 'Are you sure?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.removeItem('@around_bulsu/favorites');
+          triggerHaptic('success');
+        },
+      },
+    ]);
+  };
+
+  const SectionHeader = ({ title }) => (
+    <Text style={{ fontSize: 13, fontWeight: '600', fontFamily: 'Inter_600SemiBold', color: colors.textPrimary, marginBottom: 8, marginTop: 24, textTransform: 'uppercase', letterSpacing: 1 }}>{title}</Text>
+  );
+
+  const RowSwitch = ({ label, value, onValueChange }) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <Text style={{ fontSize: 16, color: colors.textPrimary, fontFamily: 'Inter_400Regular' }}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={(v) => { triggerHaptic('selection'); onValueChange(v); }}
+        trackColor={{ false: '#D1D5DB', true: '#B22222' }}
+        thumbColor="#FFFFFF"
+      />
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ paddingTop: insets.top + 12, paddingBottom: 16, paddingHorizontal: 20, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: 32, fontWeight: '700', fontFamily: 'Inter_700Bold', color: colors.textPrimary }}>Settings</Text>
+      </View>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        {/* Appearance */}
+        <SectionHeader title="Appearance" />
+        <RowSwitch
+          label="Dark Mode"
+          value={isDark}
+          onValueChange={(v) => updateSettings({ theme: v ? 'dark' : 'light' })}
+        />
+
+        {/* Map Theme */}
+        <SectionHeader title="Map Theme" />
+        {MAP_STYLES.map((s) => (
+          <TouchableOpacity
+            key={s.key}
+            onPress={() => { triggerHaptic('selection'); updateSettings({ mapStyleKey: s.key }); }}
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}
+          >
+            <Text style={{ fontSize: 16, color: colors.textPrimary, fontFamily: 'Inter_400Regular' }}>{s.label}</Text>
+            {settings.mapStyleKey === s.key && <Icon name="check" size={20} color={colors.textPrimary} />}
+          </TouchableOpacity>
+        ))}
+
+        {/* Feedback */}
+        <SectionHeader title="Feedback" />
+        <RowSwitch
+          label="Haptics"
+          value={settings.hapticsEnabled}
+          onValueChange={(v) => updateSettings({ hapticsEnabled: v })}
+        />
+
+        {/* Data */}
+        <SectionHeader title="Data" />
+        <TouchableOpacity onPress={handleClearRecents} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 16, color: '#DC2626', fontFamily: 'Inter_400Regular' }}>Clear Recent Searches</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleClearFavorites} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 16, color: '#DC2626', fontFamily: 'Inter_400Regular' }}>Clear Favorites</Text>
+        </TouchableOpacity>
+
+        {/* About */}
+        <SectionHeader title="About" />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontSize: 16, color: colors.textPrimary, fontFamily: 'Inter_400Regular' }}>App Version</Text>
+          <Text style={{ fontSize: 16, color: colors.textSecondary, fontFamily: 'Inter_400Regular' }}>1.0.0</Text>
+        </View>
+        <View style={{ paddingVertical: 14 }}>
+          <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 22, fontFamily: 'Inter_400Regular' }}>
+            ARound BulSU is a campus navigation app for Bulacan State University Main Campus.
+            Use augmented reality to find your way around campus buildings and facilities.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
 };
 
-// Settings Screen (NativeWind)
-const SettingsScreen = () => (
-  <View className="flex-1 bg-gray-50">
-    <View className="bg-maroon-800 pt-12 pb-5 px-5">
-      <Text className="text-3xl font-bold text-white">Settings</Text>
-    </View>
-    <View className="p-5">
-      <View className="flex-row justify-between items-center py-4 border-b border-gray-200">
-        <Text className="text-base text-gray-700">App Version</Text>
-        <Text className="text-base text-gray-500">1.0.0</Text>
-      </View>
-      <View className="flex-row justify-between items-center py-4 border-b border-gray-200">
-        <Text className="text-base text-gray-700">Notifications</Text>
-        <Text className="text-base text-gray-500">Enabled</Text>
-      </View>
-      <View className="mt-6">
-        <Text className="text-sm font-semibold text-maroon-800 mb-2 uppercase tracking-wider">
-          About
-        </Text>
-        <Text className="text-sm text-gray-500 leading-6">
-          ARound BulSU is a campus navigation app for Bulacan State University Main Campus. 
-          Use augmented reality to find your way around campus buildings and facilities.
-        </Text>
-      </View>
-      <View className="mt-6">
-        <Text className="text-sm font-semibold text-maroon-800 mb-2 uppercase tracking-wider">
-          Credits
-        </Text>
-        <Text className="text-sm text-gray-500 leading-6">
-          Developed for BSU students and visitors.
-        </Text>
-      </View>
-    </View>
-  </View>
-);
+// Notifications Screen
+const NotificationsScreen = () => {
+  const insets = useSafeAreaInsets();
+  const { colors } = useSettings();
+  const [notifications, setNotifications] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
 
-// Notifications Screen (NativeWind)
-const NotificationsScreen = () => (
-  <View className="flex-1 bg-gray-50">
-    <View className="bg-maroon-800 pt-12 pb-5 px-5">
-      <Text className="text-3xl font-bold text-white">Notifications</Text>
-    </View>
-    <View className="flex-1 items-center justify-center p-10">
-      <View className="w-20 h-20 rounded-full bg-gray-100 items-center justify-center mb-4">
-        <Icon name="bell" size={36} color="#9CA3AF" />
-      </View>
-      <Text className="text-lg font-semibold text-gray-700 mb-2">
-        No notifications yet
-      </Text>
-      <Text className="text-sm text-gray-400 text-center leading-6">
-        You'll receive alerts about emergencies and important campus updates here.
-      </Text>
-    </View>
-  </View>
-);
+  React.useEffect(() => {
+    const fetchNotifications = async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setNotifications(data || []);
+      setLoading(false);
+    };
+    fetchNotifications();
+    const unsub = subscribeToTable('notifications', '*', () => fetchNotifications());
+    return () => unsub?.();
+  }, []);
 
-// Custom Drawer Content (NativeWind)
-const CustomDrawerContent = (props) => (
-  <DrawerContentScrollView {...props} className="flex-1">
-    <View className="bg-maroon-800 px-8 pt-12 pb-8 items-center mx-3 mt-2 rounded-2xl">
-      <View className="w-16 h-16 rounded-2xl bg-white/20 items-center justify-center mb-3">
-        <Icon name="compass" size={32} color="#FFFFFF" />
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ paddingTop: insets.top + 12, paddingBottom: 16, paddingHorizontal: 20, backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Text style={{ fontSize: 32, fontWeight: '700', fontFamily: 'Inter_700Bold', color: colors.textPrimary }}>Notifications</Text>
       </View>
-      <Text className="text-xl font-bold text-white">ARound BulSU</Text>
-      <Text className="text-sm text-white/80 mt-1">Campus Navigation</Text>
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.textMuted, fontFamily: 'Inter_400Regular' }}>Loading...</Text>
+        </View>
+      ) : notifications.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+          <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surfaceSecondary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Icon name="bell" size={36} color={colors.textMuted} />
+          </View>
+          <Text style={{ fontSize: 18, fontWeight: '600', fontFamily: 'Inter_600SemiBold', color: colors.textSecondary, marginBottom: 8 }}>
+            No notifications yet
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 22, fontFamily: 'Inter_400Regular' }}>
+            You'll receive alerts about emergencies and important campus updates here.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={{ paddingVertical: 8 }}>
+          {notifications.map((notif) => (
+            <View key={notif.id} style={{ marginHorizontal: 16, marginVertical: 6, backgroundColor: colors.surface, borderRadius: 12, padding: 16, borderLeftWidth: 4, borderLeftColor: notif.type === 'emergency' ? '#FF3B30' : colors.primary }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', fontFamily: 'Inter_600SemiBold', color: colors.textPrimary, flex: 1, marginRight: 8 }}>{notif.title}</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted, fontFamily: 'Inter_400Regular' }}>{formatTime(notif.created_at)}</Text>
+              </View>
+              {notif.body ? (
+                <Text style={{ fontSize: 14, color: colors.textSecondary, fontFamily: 'Inter_400Regular', lineHeight: 20 }}>{notif.body}</Text>
+              ) : null}
+              <View style={{ marginTop: 6, alignSelf: 'flex-start', backgroundColor: notif.type === 'emergency' ? '#FF3B3020' : colors.surfaceSecondary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Text style={{ fontSize: 11, fontFamily: 'Inter_500Medium', color: notif.type === 'emergency' ? '#FF3B30' : colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{notif.type || 'alert'}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </View>
-    <View className="pt-3">
+  );
+};
+
+// Custom Drawer Content
+const DrawerSplashIcon = require('./assets/images/splash-icon.png');
+const CustomDrawerContent = (props) => {
+  const { colors } = useSettings();
+  return (
+  <DrawerContentScrollView {...props} style={{ backgroundColor: colors.surface }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 40, paddingBottom: 24 }}>
+      <Image source={DrawerSplashIcon} style={{ width: 48, height: 48, marginRight: 12, borderRadius: 12, overflow: 'hidden' }} resizeMode="cover" />
+      <Text style={{ fontSize: 20, fontWeight: '700', color: '#B22222', fontFamily: 'Inter_700Bold' }}>ARound BulSU</Text>
+    </View>
+    <View style={{ paddingTop: 12 }}>
       <DrawerItem
         label="Notifications"
-        icon={() => <Icon name="bell" size={22} color="#374151" />}
+        icon={() => <Icon name="bell" size={22} color={colors.icon} />}
         onPress={() => props.navigation.navigate('Notifications')}
-        labelStyle={styles.drawerLabel}
+        labelStyle={[styles.drawerLabel, { color: colors.textPrimary }]}
       />
       <DrawerItem
         label="Settings"
-        icon={() => <Icon name="settings" size={22} color="#374151" />}
+        icon={() => <Icon name="settings" size={22} color={colors.icon} />}
         onPress={() => props.navigation.navigate('Settings')}
-        labelStyle={styles.drawerLabel}
+        labelStyle={[styles.drawerLabel, { color: colors.textPrimary }]}
       />
     </View>
   </DrawerContentScrollView>
-);
+  );
+};
+
+// StatusBar wrapper that reads theme
+const StatusBarWrapper = () => {
+  const { isDark } = useSettings();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+};
 
 // Navigate Stack (includes Navigate, BuildingInfo, ARNavigation)
 function NavigateStack() {
@@ -166,56 +301,79 @@ function InfoStack() {
   );
 }
 
+// Search Stack
+function SearchStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SearchMain" component={SearchScreen} />
+      <Stack.Screen name="BuildingInfo" component={BuildingInfoScreen} />
+      <Stack.Screen name="ARNavigation" component={ARNavigationScreen} />
+    </Stack.Navigator>
+  );
+}
+
 // Main Tab Navigator
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: '#FFFFFF',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.5)',
-        tabBarLabelStyle: styles.tabBarLabel,
-      }}
+      tabBar={(props) => <SpotifyTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen 
-        name="Navigate" 
-        component={NavigateStack}
-        options={({ route }) => ({
-          tabBarLabel: 'Navigate',
-          tabBarStyle: getTabBarStyle(route),
-          tabBarIcon: ({ focused }) => (
-            <Icon name="compass" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-          ),
-        })}
-      />
-      <Tab.Screen 
-        name="Emergency" 
-        component={EmergencyStack}
-        options={({ route }) => ({
-          tabBarLabel: 'Emergency',
-          tabBarStyle: getTabBarStyle(route),
-          tabBarIcon: ({ focused }) => (
-            <Icon name="alert" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-          ),
-        })}
-      />
-      <Tab.Screen 
-        name="Info" 
-        component={InfoStack}
-        options={{
-          tabBarLabel: 'Info',
-          tabBarIcon: ({ focused }) => (
-            <Icon name="info" size={24} color={focused ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
-          ),
-        }}
-      />
+      <Tab.Screen name="Navigate" component={NavigateStack} />
+      <Tab.Screen name="Emergency" component={EmergencyStack} />
+      <Tab.Screen name="Info" component={InfoStack} />
+      <Tab.Screen name="Search" component={SearchStack} />
     </Tab.Navigator>
   );
 }
 
+const EmergencyAlertHost = ({ navigationRef, pushAlert, clearPushAlert }) => {
+  const { activeAlert, dismissAlert } = useAlert();
+  const visibleAlert = activeAlert || pushAlert;
+
+  const clearCurrentAlert = () => {
+    if (activeAlert) {
+      dismissAlert();
+    }
+    if (pushAlert) {
+      clearPushAlert();
+    }
+  };
+
+  const handleEvacuate = () => {
+    clearCurrentAlert();
+
+    if (navigationRef.current) {
+      navigationRef.current.navigate('Emergency', {
+        screen: 'EmergencyMain',
+        params: { triggerEvacuation: true },
+      });
+    }
+  };
+
+  return (
+    <EmergencyAlertModal
+      visible={Boolean(visibleAlert)}
+      alert={visibleAlert}
+      onDismiss={clearCurrentAlert}
+      onEvacuate={handleEvacuate}
+    />
+  );
+};
+
 // Main App Component
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    ...Feather.font,
+    ...MaterialCommunityIcons.font,
+    ...Ionicons.font,
+    ...FontAwesome5.font,
+    ...MaterialIcons.font,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
   const [isReady, setIsReady] = useState(false);
   const [criticalAlert, setCriticalAlert] = useState(null);
   const [showAlertModal, setShowAlertModal] = useState(false);
@@ -252,37 +410,35 @@ export default function App() {
     };
   }, []);
 
-  // Initialize FCM notifications (delayed to prevent blocking)
+  // Initialize push notifications (delayed to prevent blocking app load)
   useEffect(() => {
     let cleanup = () => {};
     let isMounted = true;
 
-    // Delay FCM initialization to ensure app is fully loaded
     const timeoutId = setTimeout(async () => {
       if (!isMounted) return;
       
       try {
-        // Dynamically import to prevent any load-time issues
         const { initializeNotifications } = await import('./src/services/notificationService');
         
         if (!isMounted) return;
         
         cleanup = await initializeNotifications({
           onForegroundMessage: (alert) => {
-            console.log('Foreground alert received:', alert);
+            console.log('[App] Foreground notification received:', alert);
             setCriticalAlert(alert);
             setShowAlertModal(true);
           },
           onNotificationOpen: (alert) => {
-            console.log('Notification opened alert:', alert);
+            console.log('[App] Notification tapped, opening alert:', alert);
             setCriticalAlert(alert);
             setShowAlertModal(true);
           },
         }) || (() => {});
       } catch (error) {
-        console.log('FCM setup skipped:', error.message);
+        console.log('[App] Push notification setup skipped:', error.message);
       }
-    }, 3000); // Wait 3 seconds after app loads
+    }, 3000);
 
     return () => {
       isMounted = false;
@@ -291,96 +447,57 @@ export default function App() {
     };
   }, []);
 
-  // Handle evacuation from alert modal
-  const handleEvacuate = async () => {
-    setShowAlertModal(false);
-    setCriticalAlert(null);
-
-    // Navigate to Emergency tab and trigger evacuation
-    if (navigationRef.current) {
-      // Navigate to Emergency tab
-      navigationRef.current.navigate('Emergency', {
-        screen: 'EmergencyMain',
-        params: { triggerEvacuation: true },
-      });
-    }
-  };
-
   const handleDismissAlert = () => {
     setShowAlertModal(false);
     setCriticalAlert(null);
   };
 
-  // Show splash screen until ready
-  if (!isReady) {
+  // Show splash screen until ready AND fonts loaded
+  if (!isReady || !fontsLoaded) {
     return <SplashScreen onReady={() => setIsReady(true)} />;
   }
 
   // Main app with drawer navigation wrapping tabs
   return (
     <SafeAreaProvider>
-      <NetworkProvider>
-        <ToastProvider>
-          <AlertProvider>
-            <NavigationContainer ref={navigationRef}>
-              <Drawer.Navigator
-                drawerContent={(props) => <CustomDrawerContent {...props} />}
-                screenOptions={{
-                  headerShown: false,
-                  drawerStyle: {
-                    backgroundColor: '#fff',
-                    width: 280,
-                  },
-                }}
-              >
+      <SettingsProvider>
+        <NetworkProvider>
+          <ToastProvider>
+            <AlertProvider>
+              <StatusBarWrapper />
+              <NavigationContainer ref={navigationRef}>
+                <Drawer.Navigator
+                  drawerContent={(props) => <CustomDrawerContent {...props} />}
+                  screenOptions={{
+                    headerShown: false,
+                    drawerPosition: 'right',
+                    drawerStyle: {
+                      width: 280,
+                    },
+                  }}
+                >
                 <Drawer.Screen name="Main" component={MainTabs} />
                 <Drawer.Screen name="Notifications" component={NotificationsScreen} />
                 <Drawer.Screen name="Settings" component={SettingsScreen} />
               </Drawer.Navigator>
             </NavigationContainer>
-            <AlertOverlay />
+              <EmergencyAlertHost
+                navigationRef={navigationRef}
+                pushAlert={showAlertModal ? criticalAlert : null}
+                clearPushAlert={handleDismissAlert}
+              />
           </AlertProvider>
-
-          {/* Critical Alert Modal - FCM-based overlay for background/killed state */}
-          <CriticalAlertModal
-            visible={showAlertModal}
-            alert={criticalAlert}
-            onDismiss={handleDismissAlert}
-            onEvacuate={handleEvacuate}
-          />
         </ToastProvider>
       </NetworkProvider>
+      </SettingsProvider>
     </SafeAreaProvider>
   );
 }
 
-// Keep StyleSheet for tab navigator (complex styles not fully supported by NativeWind)
 const styles = StyleSheet.create({
-  tabBar: { 
-    backgroundColor: '#800000',
-    borderTopWidth: 0,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    height: 70,
-    paddingBottom: 8,
-    paddingTop: 8,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 20,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  tabBarLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
   drawerLabel: {
     fontSize: 16,
     color: '#333',
+    fontFamily: 'Inter_400Regular',
   },
 });

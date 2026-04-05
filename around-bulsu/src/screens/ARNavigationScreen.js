@@ -9,8 +9,6 @@ import {
   Dimensions,
   TouchableOpacity,
   Animated,
-  PanResponder,
-  Platform,
   Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +20,7 @@ import MapboxGL from '@rnmapbox/maps';
 import { MaterialCommunityIcons, FontAwesome5, Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { MAPBOX_ACCESS_TOKEN } from '../config/mapbox';
+import { useSettings } from '../context/SettingsContext';
 
 // Import shared pathfinding utilities
 import {
@@ -176,7 +175,8 @@ try {
 } catch (e) { console.log('[AR Assets] turn_arrow not found:', e.message); }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const MAP_MIN_HEIGHT = 180;
+const MAP_FIXED_HEIGHT = SCREEN_HEIGHT * 0.40;
+const MAP_MIN_HEIGHT = SCREEN_HEIGHT * 0.40;
 const MAP_HALF_HEIGHT = SCREEN_HEIGHT * 0.45;
 const MAP_MAX_HEIGHT = SCREEN_HEIGHT * 0.90;
 const CAMERA_FOV = 70;
@@ -494,8 +494,8 @@ const ARNavigationScene = (props) => {
     const startIdx = Math.min(closestIdx + 1, pathNodes.length - 1);
     const endIdx = Math.min(startIdx + arrowCount, pathNodes.length);
     
-    // Emergency mode uses larger arrows for visibility
-    const baseScale = isEmergency ? 0.35 : 0.25;
+    // Emergency mode uses larger arrows for visibility (2x base scale)
+    const baseScale = isEmergency ? 0.7 : 0.5;
     
     const arrows = [];
     
@@ -531,33 +531,15 @@ const ARNavigationScene = (props) => {
       
       // Position arrow floating just above ground level at the node location
       const arrowPosition = [nodeARPos.x, groundY + 0.3, nodeARPos.z];
-      // Rotation: tilt down slightly to point forward direction, Y rotation for bearing
-      const arrowRotation = [-30, arrowYRotation, 0];
+      // Rotation: flat forward, Y rotation for bearing
+      const arrowRotation = [0, arrowYRotation, 0];
       const arrowScale = [baseScale, baseScale, baseScale];
       
       // Opacity based on distance (closer = more visible)
       const opacity = Math.max(0.4, 1 - (nodeARPos.realDistance / 50));
       
-      // Last node uses destination marker instead of chevron arrow
-      if (isLastNode && AR_ASSETS.destinationPin) {
-        arrows.push(
-          <ViroNode key={`final-dest-${i}`} position={arrowPosition}>
-            <Viro3DObject
-              source={AR_ASSETS.destinationPin}
-              type="GLB"
-              scale={[0.4, 0.4, 0.4]}
-              materials={['destinationRed']}
-              opacity={opacity}
-            />
-            <ViroText
-              text={`${Math.round(nodeARPos.realDistance)}m`}
-              position={[0, 0.6, 0]}
-              style={{ fontSize: 14, color: '#FF6B6B', textAlign: 'center' }}
-            />
-          </ViroNode>
-        );
-        continue; // Skip normal arrow rendering
-      }
+      // Skip last node — renderDestinationPin handles the building pin separately
+      if (isLastNode) continue;
       
       arrows.push(
         <ViroNode key={`node-arrow-${i}`} position={arrowPosition}>
@@ -572,7 +554,7 @@ const ARNavigationScene = (props) => {
           {/* Show distance to this node */}
           <ViroText
             text={`${Math.round(nodeARPos.realDistance)}m`}
-            position={[0, 0.4, 0]}
+            position={[0, 0.8, 0]}
             style={{ fontSize: 12, color: isEmergency ? '#FF6B6B' : '#00E5FF', textAlign: 'center' }}
           />
         </ViroNode>
@@ -596,28 +578,31 @@ const ARNavigationScene = (props) => {
     // Only show when within range
     if (destARPos.realDistance >= 100) return null;
     
-    // Position at exact GPS location (no scaling)
-    const pinPosition = [destARPos.x, groundY + 2, destARPos.z];
+    // Position at exact GPS location (elevated above ground)
+    const pinPosition = [destARPos.x, groundY + 3, destARPos.z];
+    
+    // Label: show "Safe Zone: name" for evacuation zones, otherwise building name
+    const pinLabel = building.isEvacuationZone ? `Safe Zone: ${building.name}` : building.name;
     
     return (
       <ViroNode position={pinPosition}>
         <Viro3DObject
           source={AR_ASSETS.destinationPin}
           type="GLB"
-          scale={[0.5, 0.5, 0.5]}
+          scale={[1.0, 1.0, 1.0]}
           materials={['destinationRed']}
           onLoadStart={() => console.log('[AR] Destination pin loading...')}
           onLoadEnd={() => console.log('[AR] Destination pin loaded!')}
           onError={(event) => console.log('[AR] Destination pin error:', event.nativeEvent)}
         />
         <ViroText
-          text={building.name}
-          position={[0, 1.0, 0]}
+          text={pinLabel}
+          position={[0, 1.5, 0]}
           style={{ fontSize: 18, color: '#FFFFFF', textAlign: 'center' }}
         />
         <ViroText
           text={`${Math.round(destARPos.realDistance)}m`}
-          position={[0, 0.5, 0]}
+          position={[0, 1.0, 0]}
           style={{ fontSize: 14, color: '#FF6B6B', textAlign: 'center' }}
         />
       </ViroNode>
@@ -658,7 +643,7 @@ const ARNavigationScene = (props) => {
           source={AR_ASSETS.turnArrow}
           type="GLB"
           rotation={turnRotation}
-          scale={[0.5, 0.5, 0.5]}
+          scale={[1.0, 1.0, 1.0]}
           materials={['turnArrowGold']}
           animation={{
             name: 'turnArrowPulse',
@@ -668,7 +653,7 @@ const ARNavigationScene = (props) => {
         />
         <ViroText
           text={`${isLeft ? 'Turn Left' : 'Turn Right'} in ${nextTurn.distance}m`}
-          position={[0, 0.8, 0]}
+          position={[0, 1.2, 0]}
           style={{ fontSize: 14, color: '#FFD700', textAlign: 'center' }}
         />
       </ViroNode>
@@ -713,7 +698,7 @@ const ARNavigationScene = (props) => {
             <ViroText
               text={building?.name || 'Building'}
               style={{
-                fontFamily: 'sans-serif-medium',
+                fontFamily: 'Inter_500Medium',
                 fontSize: 24,
                 color: '#FFFFFF',
                 fontWeight: 'bold',
@@ -729,7 +714,7 @@ const ARNavigationScene = (props) => {
               <ViroText
                 text={building.description.length > 60 ? building.description.substring(0, 60) + '...' : building.description}
                 style={{
-                  fontFamily: 'sans-serif',
+                  fontFamily: 'Inter_400Regular',
                   fontSize: 14,
                   color: '#CCCCCC',
                   textAlign: 'center',
@@ -745,7 +730,7 @@ const ARNavigationScene = (props) => {
               <ViroText
                 text={`${building.rooms.length} room${building.rooms.length !== 1 ? 's' : ''}`}
                 style={{
-                  fontFamily: 'sans-serif',
+                  fontFamily: 'Inter_400Regular',
                   fontSize: 16,
                   color: '#00E5FF',
                   textAlign: 'center',
@@ -816,6 +801,7 @@ const ARNavigationScene = (props) => {
 
 // ========== Main Component ==========
 const ARNavigationScreen = ({ route, navigation }) => {
+  const { mapStyle, colors } = useSettings();
   // Support both 'building' and 'destination' param names (for emergency evacuation)
   const { building: buildingParam, destination, userLocation: initialLocation, nodes, edges, blockages = [], isEmergency = false } = route.params;
   const building = buildingParam || destination;
@@ -874,10 +860,17 @@ const ARNavigationScreen = ({ route, navigation }) => {
   const [isRerouting, setIsRerouting] = useState(false);
   const [clearedPathIndex, setClearedPathIndex] = useState(0);
   const [fullPathNodes, setFullPathNodes] = useState([]); // Store full path for reference
+  const [fullPathGeoJSON, setFullPathGeoJSON] = useState(null); // Store full original path GeoJSON for gray trail
+  // Recalculate spin animation
+  const recalcSpinValue = useRef(new Animated.Value(0)).current;
   // Live blockages from realtime subscription (for mid-navigation updates)
   const [liveBlockages, setLiveBlockages] = useState(blockages);
   // Error state for surfacing GPS/AR errors to user
   const [locationError, setLocationError] = useState(null);
+  // Path error state for when no path can be found
+  const [pathError, setPathError] = useState(null);
+  // Reroute toast message
+  const [rerouteMessage, setRerouteMessage] = useState(null);
   // AR Navigation Guide screen state
   const [showARGuide, setShowARGuide] = useState(!hasUserDismissedGuideThisSession);
   const [doNotShowAgain, setDoNotShowAgain] = useState(false);
@@ -890,6 +883,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
   const compassFilterRef = useRef(new CompassFilter(0.08));
   const stableHeadingRef = useRef(0);
   const HEADING_DEADBAND_DEG = 2.5;
+  const latestAccelRef = useRef({ x: 0, y: 0, z: -1 }); // Latest accelerometer for tilt-compensated heading
   
   // Map heading smoothing (lerp toward target bearing)
   const targetMapHeadingRef = useRef(0);
@@ -1042,25 +1036,65 @@ const ARNavigationScreen = ({ route, navigation }) => {
         }
       );
       
-      Magnetometer.setUpdateInterval(120);
-      magnetometerSubRef.current = Magnetometer.addListener((data) => {
+      // Start accelerometer first so tilt data is available for heading computation
+      Accelerometer.setUpdateInterval(100);
+      accelerometerSubRef.current = Accelerometer.addListener((data) => {
         if (!isMountedRef.current) return;
-        let rawAngle = Math.atan2(data.y, data.x) * (180 / Math.PI);
-        rawAngle = (rawAngle + 360) % 360;
+        // Store latest accel for tilt-compensated heading
+        latestAccelRef.current = data;
+        // Compute pitch for map toggle
+        const rawPitch = Math.atan2(-data.x, Math.sqrt(data.y ** 2 + data.z ** 2)) * (180 / Math.PI);
+        const smoothedPitch = pitchFilterRef.current.filter(rawPitch);
+        setPitch(smoothedPitch);
+      });
+
+      // Tilt-compensated magnetometer heading
+      // Same approach as Android's SensorManager.getRotationMatrix() + getOrientation()
+      Magnetometer.setUpdateInterval(120);
+      magnetometerSubRef.current = Magnetometer.addListener((magData) => {
+        if (!isMountedRef.current) return;
+        const accel = latestAccelRef.current;
+
+        // Gravity vector (from accelerometer)
+        const ax = accel.x, ay = accel.y, az = accel.z;
+        // Magnetic field vector
+        const mx = magData.x, my = magData.y, mz = magData.z;
+
+        // Cross product: H = A × M (east direction)
+        const hx = ay * mz - az * my;
+        const hy = az * mx - ax * mz;
+        const hz = ax * my - ay * mx;
+        const normH = Math.sqrt(hx * hx + hy * hy + hz * hz);
+
+        // Skip if magnetic field is too weak or perpendicular to gravity
+        if (normH < 0.1) return;
+
+        // Normalize H (east vector)
+        const invH = 1.0 / normH;
+        const ex = hx * invH, ey = hy * invH, ez = hz * invH;
+
+        // Normalize A (down/gravity vector)
+        const normA = Math.sqrt(ax * ax + ay * ay + az * az);
+        if (normA < 0.1) return;
+        const invA = 1.0 / normA;
+        const dx = ax * invA, dy = ay * invA, dz = az * invA;
+
+        // Cross product: M' = H × A (north direction in device frame)
+        const nx = ey * dz - ez * dy;
+        const ny = ez * dx - ex * dz;
+        // const nz = ex * dy - ey * dx; // unused
+
+        // Azimuth = atan2(east_y, north_y) — corrected for expo-sensors axis convention
+        // expo-sensors magnetometer axes differ from Android SensorManager, offset by 180°
+        let rawAngle = Math.atan2(ex, nx) * (180 / Math.PI);
+        rawAngle = (rawAngle + 180 + 360) % 360;
+
         const smoothedHeading = compassFilterRef.current.filter(rawAngle);
         const diff = Math.abs(compassFilterRef.current.angularDifference(stableHeadingRef.current, smoothedHeading));
         if (diff >= HEADING_DEADBAND_DEG) {
           stableHeadingRef.current = smoothedHeading;
           setHeading(smoothedHeading);
         }
-      });
-      
-      Accelerometer.setUpdateInterval(150);
-      accelerometerSubRef.current = Accelerometer.addListener((data) => {
-        if (!isMountedRef.current) return;
-        const rawPitch = Math.atan2(-data.x, Math.sqrt(data.y ** 2 + data.z ** 2)) * (180 / Math.PI);
-        const smoothedPitch = pitchFilterRef.current.filter(rawPitch);
-        setPitch(smoothedPitch);
       });
     };
     
@@ -1233,10 +1267,18 @@ const ARNavigationScreen = ({ route, navigation }) => {
   // Subscribe to active blockages during navigation - triggers reroute if path becomes blocked
   useEffect(() => {
     const unsubscribe = subscribeToTable('blockages', (allBlockages) => {
-      // Filter to only active blockages
-      const activeBlockages = allBlockages.filter(b => b.is_active);
-      setLiveBlockages(activeBlockages);
-      console.log('[Blockage] Received', activeBlockages.length, 'active blockages');
+      // Filter to only active blockages (column is "active", not "is_active")
+      const activeFromLive = allBlockages.filter(b => b.active);
+      // Merge with initial blockages by ID to prevent race condition on mount
+      // (subscription may fire before initial calculatePath uses the route-param blockages)
+      setLiveBlockages(prev => {
+        const liveIds = new Set(activeFromLive.map(b => b.id));
+        // Keep any initial blockages not yet seen in live data
+        const fromInitial = (blockages || []).filter(b => b.active && !liveIds.has(b.id));
+        const merged = [...activeFromLive, ...fromInitial];
+        console.log('[Blockage] Live:', activeFromLive.length, 'Initial merge:', fromInitial.length, 'Total:', merged.length);
+        return merged;
+      });
     });
     
     return unsubscribe;
@@ -1282,9 +1324,24 @@ const ARNavigationScreen = ({ route, navigation }) => {
     if (pathIsBlocked && userLocation && !isRerouting) {
       console.log('[Blockage] Path blocked by new blockage - rerouting...');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      setRerouteMessage('Path blocked ahead \u2014 rerouting...');
+      setTimeout(() => setRerouteMessage(null), 3000);
       triggerReroute(userLocation);
     }
   }, [liveBlockages, fullPathNodes, nodes, userLocation, isRerouting, triggerReroute]);
+
+  // Recalculate path whenever liveBlockages changes (covers both new blockages AND cleared blockages)
+  const hasInitialPathRef = useRef(false);
+  useEffect(() => {
+    // Skip the very first render (initial calculatePath is called from the mount useEffect)
+    if (!hasInitialPathRef.current) {
+      if (fullPathNodes.length > 0) hasInitialPathRef.current = true;
+      return;
+    }
+    if (!userLocation) return;
+    console.log('[Blockage] liveBlockages changed, recalculating path...');
+    calculatePath(userLocation);
+  }, [liveBlockages]);
 
   const calculatePath = useCallback((startLocationOverride = null) => {
     // Validate all required data
@@ -1325,13 +1382,18 @@ const ARNavigationScreen = ({ route, navigation }) => {
     
     if (result.error) {
       console.warn('[PathCalc] Warning:', result.error);
+      setPathError(result.error);
       return;
     }
     
+    // Clear any previous path error on success
+    setPathError(null);
     console.log('[PathCalc] Path found with', result.path.length, 'points');
     
     // Convert path to GeoJSON and set state (solid line - graph nodes only)
     setNavigationPath(pathToGeoJSON(result.path));
+    // Store full original path GeoJSON for gray walked trail (never trimmed)
+    setFullPathGeoJSON(pathToGeoJSON(result.path));
     
     // User connector line (dotted) - dynamically updated from current position to first path node
     if (result.userStartPoint && result.path.length > 0) {
@@ -1406,7 +1468,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
       lastRerouteRef.current = now;
       triggerReroute(currentLoc);
     }
-  }, [fullPathNodes, isRerouting]);
+  }, [fullPathNodes, isRerouting, triggerReroute]);
 
   // Trigger a reroute from current location
   const triggerReroute = useCallback((fromLocation) => {
@@ -1415,11 +1477,24 @@ const ARNavigationScreen = ({ route, navigation }) => {
     setIsRerouting(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     
-    // Small delay to show the "Rerouting..." UI (stored in ref for cleanup)
+    // Spin animation for recalculate button
+    recalcSpinValue.setValue(0);
+    Animated.loop(
+      Animated.timing(recalcSpinValue, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+    
+    // Small delay to show the loading UI (stored in ref for cleanup)
     rerouteTimeoutRef.current = setTimeout(() => {
-      if (!isMountedRef.current) return; // Guard against unmounted state updates
+      if (!isMountedRef.current) return;
       calculatePath(fromLocation);
       setIsRerouting(false);
+      recalcSpinValue.stopAnimation();
+      recalcSpinValue.setValue(0);
       rerouteTimeoutRef.current = null;
     }, 500);
   }, [calculatePath, isRerouting]);
@@ -1500,65 +1575,6 @@ const ARNavigationScreen = ({ route, navigation }) => {
     return rel;
   };
 
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gs) => {
-      // Calculate new height based on current snap state
-      let baseHeight;
-      if (mapSnapState === 'full') baseHeight = MAP_MAX_HEIGHT;
-      else if (mapSnapState === 'half') baseHeight = MAP_HALF_HEIGHT;
-      else baseHeight = MAP_MIN_HEIGHT;
-      
-      const newH = baseHeight - gs.dy;
-      if (newH >= MAP_MIN_HEIGHT && newH <= MAP_MAX_HEIGHT) {
-        mapHeight.setValue(newH);
-      }
-    },
-    onPanResponderRelease: (_, gs) => {
-      const velocity = gs.vy; // Negative = swiping up, Positive = swiping down
-      const currentH = mapSnapState === 'half' ? MAP_HALF_HEIGHT : MAP_MIN_HEIGHT;
-      const newH = currentH - gs.dy;
-      
-      // Determine target snap point based on position and velocity (only collapsed and half states)
-      let targetHeight, targetState;
-      
-      if (velocity < -0.5 || (gs.dy < -50 && velocity >= -0.5)) {
-        // Swiping up - go to half (max state)
-        targetHeight = MAP_HALF_HEIGHT;
-        targetState = 'half';
-      } else if (velocity > 0.5 || (gs.dy > 50 && velocity <= 0.5)) {
-        // Swiping down - go to collapsed (min state)
-        targetHeight = MAP_MIN_HEIGHT;
-        targetState = 'collapsed';
-      } else {
-        // Snap to nearest between collapsed and half only
-        const distToMin = Math.abs(newH - MAP_MIN_HEIGHT);
-        const distToHalf = Math.abs(newH - MAP_HALF_HEIGHT);
-        
-        if (distToMin <= distToHalf) {
-          targetHeight = MAP_MIN_HEIGHT;
-          targetState = 'collapsed';
-        } else {
-          targetHeight = MAP_HALF_HEIGHT;
-          targetState = 'half';
-        }
-      }
-      
-      // Apply haptic feedback on snap
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      
-      setMapSnapState(targetState);
-      setIsMapExpanded(targetState !== 'collapsed');
-      Animated.spring(mapHeight, { 
-        toValue: targetHeight, 
-        tension: 80,
-        friction: 12,
-        useNativeDriver: false 
-      }).start();
-    },
-  });
-
   // Loading Screen - waiting for permissions
   if (!permission) {
     return (
@@ -1583,7 +1599,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
   if (!permission.granted) {
     return (
       <View className="flex-1 items-center justify-center p-10">
-        <LinearGradient colors={['#800000', '#4d0000']} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['#B22222', '#4d0000']} style={StyleSheet.absoluteFill} />
         <Text className="text-6xl mb-5">📷</Text>
         <Text className="text-2xl font-bold text-white mb-3 text-center">
           Camera Access Required
@@ -1617,90 +1633,76 @@ const ARNavigationScreen = ({ route, navigation }) => {
     };
 
     return (
-      <View className="flex-1">
-        <LinearGradient colors={['#800000', '#5c0000', '#3d0000']} style={StyleSheet.absoluteFill} />
-        <SafeAreaView className="flex-1 px-6 py-4">
-          {/* Header */}
-          <View className="items-center mt-4 mb-6">
-            <View className="w-16 h-16 rounded-full bg-white/20 items-center justify-center mb-4">
-              <MaterialCommunityIcons name="navigation-variant" size={36} color="#FFFFFF" />
+      <View style={[styles.guideContainer, { backgroundColor: colors.bg }]}>
+        <SafeAreaView style={styles.guideSafeArea}>
+          <View style={styles.guideHeader}>
+            <View style={[styles.guideHeaderIconWrap, { backgroundColor: colors.surfaceSecondary }]}>
+              <MaterialCommunityIcons name="navigation-variant" size={28} color={colors.maroon} />
             </View>
-            <Text className="text-2xl font-bold text-white text-center">Campus Navigation Guide</Text>
+            <Text style={[styles.guideTitle, { color: colors.textPrimary }]}>AR Navigation Guide</Text>
+            <Text style={[styles.guideSubtitle, { color: colors.textSecondary }]}>Quick reminders before you start</Text>
           </View>
 
-          {/* Content */}
-          <View className="flex-1 justify-center">
-            {/* How to Navigate */}
-            <View className="bg-white/10 rounded-2xl p-4 mb-4">
-              <View className="flex-row items-center mb-3">
-                <MaterialCommunityIcons name="compass-outline" size={24} color="#FFD700" />
-                <Text className="text-lg font-bold text-white ml-3">How to Navigate</Text>
+          <View style={styles.guideContent}>
+            <View style={[styles.guideCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.guideCardHeader}>
+                <MaterialCommunityIcons name="compass-outline" size={20} color={colors.maroon} />
+                <Text style={[styles.guideCardTitle, { color: colors.textPrimary }]}>How to Navigate</Text>
               </View>
-              <Text className="text-white/90 leading-6">
-                Simply point your phone forward and follow the AR path overlaid on your screen. The arrows will guide you directly to the building you're looking for.
-              </Text>
+              <Text style={[styles.guideCardText, { color: colors.textSecondary }]}>Point your phone forward and follow the path arrows on screen.</Text>
             </View>
 
-            {/* Campus Safety First */}
-            <View className="bg-white/10 rounded-2xl p-4 mb-4">
-              <View className="flex-row items-center mb-3">
-                <MaterialCommunityIcons name="shield-check-outline" size={24} color="#FFD700" />
-                <Text className="text-lg font-bold text-white ml-3">Campus Safety First</Text>
+            <View style={[styles.guideCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.guideCardHeader}>
+                <MaterialCommunityIcons name="shield-check-outline" size={20} color={colors.maroon} />
+                <Text style={[styles.guideCardTitle, { color: colors.textPrimary }]}>Safety First</Text>
               </View>
-              <View className="space-y-2">
-                <View className="flex-row items-start mb-2">
-                  <MaterialCommunityIcons name="eye-outline" size={18} color="#FFFFFF" style={{ marginTop: 2 }} />
-                  <Text className="text-white/90 ml-3 flex-1">
-                    <Text className="font-semibold">Heads Up:</Text> Keep your eyes on the path ahead. Do not walk while looking only at your screen.
-                  </Text>
+              <View style={styles.guideBulletList}>
+                <View style={styles.guideBulletItem}>
+                  <MaterialCommunityIcons name="eye-outline" size={16} color={colors.maroon} />
+                  <Text style={[styles.guideBulletText, { color: colors.textSecondary }]}>Keep your eyes on the path ahead.</Text>
                 </View>
-                <View className="flex-row items-start mb-2">
-                  <MaterialCommunityIcons name="car" size={18} color="#FFFFFF" style={{ marginTop: 2 }} />
-                  <Text className="text-white/90 ml-3 flex-1">
-                    <Text className="font-semibold">Crosswalks:</Text> Always stop and look for traffic or cyclists before crossing campus roads and paths.
-                  </Text>
+                <View style={styles.guideBulletItem}>
+                  <MaterialCommunityIcons name="car" size={16} color={colors.maroon} />
+                  <Text style={[styles.guideBulletText, { color: colors.textSecondary }]}>Stop and check crosswalks before crossing.</Text>
                 </View>
-                <View className="flex-row items-start">
-                  <MaterialCommunityIcons name="account-group-outline" size={18} color="#FFFFFF" style={{ marginTop: 2 }} />
-                  <Text className="text-white/90 ml-3 flex-1">
-                    <Text className="font-semibold">Stay Present:</Text> Be mindful of other students and staff moving around you.
-                  </Text>
+                <View style={styles.guideBulletItem}>
+                  <MaterialCommunityIcons name="account-group-outline" size={16} color={colors.maroon} />
+                  <Text style={[styles.guideBulletText, { color: colors.textSecondary }]}>Stay aware of people around you.</Text>
                 </View>
               </View>
             </View>
 
-            {/* Good to Know */}
-            <View className="bg-white/10 rounded-2xl p-4 mb-6">
-              <View className="flex-row items-center mb-3">
-                <MaterialCommunityIcons name="information-outline" size={24} color="#FFD700" />
-                <Text className="text-lg font-bold text-white ml-3">Good to Know</Text>
-              </View>
-              <Text className="text-white/90 leading-6">
-                GPS can be less precise indoors or between large structures. Use building names and exterior signage to confirm you've arrived at the correct location.
-              </Text>
+            <View style={[styles.guideInfoRow, { backgroundColor: colors.surfaceSecondary, borderColor: colors.border }]}>
+              <MaterialCommunityIcons name="information-outline" size={16} color={colors.maroon} />
+              <Text style={[styles.guideInfoText, { color: colors.textSecondary }]}>GPS may be less accurate indoors or near tall structures.</Text>
             </View>
           </View>
 
-          {/* Do not show again checkbox */}
-          <TouchableOpacity 
-            className="flex-row items-center justify-center mb-4"
+          <TouchableOpacity
+            style={styles.guideCheckboxRow}
             onPress={() => setDoNotShowAgain(!doNotShowAgain)}
           >
-            <View className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${doNotShowAgain ? 'bg-white border-white' : 'border-white/60'}`}>
-              {doNotShowAgain && <MaterialCommunityIcons name="check" size={14} color="#800000" />}
+            <View
+              style={[
+                styles.guideCheckbox,
+                {
+                  borderColor: doNotShowAgain ? colors.maroon : colors.textMuted,
+                  backgroundColor: doNotShowAgain ? colors.maroon : 'transparent',
+                },
+              ]}
+            >
+              {doNotShowAgain && <MaterialCommunityIcons name="check" size={12} color={colors.surface} />}
             </View>
-            <Text className="text-white/80 text-sm">Don't show this again for this session</Text>
+            <Text style={[styles.guideCheckboxLabel, { color: colors.textSecondary }]}>Don’t show this again for this session</Text>
           </TouchableOpacity>
 
-          {/* Got it button */}
-          <TouchableOpacity 
-            className="rounded-2xl overflow-hidden"
-            style={styles.elevatedButton}
+          <TouchableOpacity
+            style={[styles.guidePrimaryButton, { backgroundColor: colors.maroon }]}
             onPress={handleDismissGuide}
+            activeOpacity={0.9}
           >
-            <LinearGradient colors={['#FFD700', '#FFC000']} style={styles.guideButtonGradient}>
-              <Text className="text-maroon-900 text-lg font-bold">Got it</Text>
-            </LinearGradient>
+            <Text style={[styles.guidePrimaryButtonText, { color: colors.surface }]}>Start AR</Text>
           </TouchableOpacity>
         </SafeAreaView>
       </View>
@@ -1711,7 +1713,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
   if (hasArrived) {
     return (
       <View className="flex-1 items-center justify-center">
-        <LinearGradient colors={['#800000', '#4d0000', '#1a0000']} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={['#B22222', '#4d0000', '#1a0000']} style={StyleSheet.absoluteFill} />
         <Animated.View 
           className="items-center p-10"
           style={{ transform: [{ scale: celebrationAnim }], opacity: celebrationAnim }}
@@ -1719,7 +1721,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
           <View className="w-24 h-24 rounded-full bg-white/20 items-center justify-center mb-6">
             <FontAwesome5 name="flag-checkered" size={48} color="#FFD700" />
           </View>
-          <Text className="text-4xl font-bold text-white mb-3">You've Arrived!</Text>
+          <Text className="text-4xl font-bold text-white mb-3">You’ve Arrived!</Text>
           <Text className="text-xl text-white/90 mb-10">{building.name}</Text>
           <TouchableOpacity 
             className="rounded-2xl overflow-hidden"
@@ -1738,14 +1740,52 @@ const ARNavigationScreen = ({ route, navigation }) => {
     );
   }
 
+  // Path Error Screen — full-screen overlay when no path found
+  if (pathError) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={StyleSheet.absoluteFill} />
+        <View className="items-center p-10">
+          <View className="w-24 h-24 rounded-full bg-red-500/20 items-center justify-center mb-6">
+            <MaterialCommunityIcons name="map-marker-off" size={48} color="#FF6B6B" />
+          </View>
+          <Text className="text-3xl font-bold text-white mb-3 text-center">No Path Found</Text>
+          <Text className="text-base text-white/80 mb-2 text-center px-4">{pathError}</Text>
+          <Text className="text-sm text-white/60 mb-10 text-center px-8">All routes may be blocked. Try again or go back.</Text>
+          <View className="flex-row" style={{ gap: 12 }}>
+            <TouchableOpacity 
+              className="rounded-2xl overflow-hidden"
+              style={styles.elevatedButton}
+              onPress={() => {
+                setPathError(null);
+                calculatePath(userLocation);
+              }}
+            >
+              <LinearGradient colors={['#4285F4', '#2962FF']} style={styles.finishButtonGradient}>
+                <MaterialCommunityIcons name="reload" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text className="text-white text-lg font-bold">Retry</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              className="rounded-2xl overflow-hidden"
+              style={styles.elevatedButton}
+              onPress={() => navigation.goBack()}
+            >
+              <LinearGradient colors={['#666', '#444']} style={styles.finishButtonGradient}>
+                <Text className="text-white text-lg font-bold">Go Back</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {/* ViroReact 3D AR Mode - hidden when map is fully expanded */}
-      {viroAvailable && !viroError && ViroARSceneNavigator && (
-        <View style={[
-          styles.arContainer, 
-          mapSnapState === 'full' && { opacity: 0, pointerEvents: 'none' }
-        ]}>
+      {/* ViroReact 3D AR Mode - unmount when map is fully expanded to save GPU */}
+      {viroAvailable && !viroError && ViroARSceneNavigator && mapSnapState !== 'full' && (
+        <View style={styles.arContainer}>
         <ViroARSceneNavigator
           autofocus={true}
           initialScene={{
@@ -1794,6 +1834,14 @@ const ARNavigationScreen = ({ route, navigation }) => {
           </View>
         )}
         
+        {/* ===== REROUTE TOAST BANNER ===== */}
+        {rerouteMessage && (
+          <View style={styles.rerouteToast}>
+            <MaterialCommunityIcons name="alert-decagram" size={20} color="#FFD700" />
+            <Text style={styles.rerouteToastText}>{rerouteMessage}</Text>
+          </View>
+        )}
+        
         {/* Animated Chevron Arrows - ONLY in fallback mode (ViroReact renders its own) */}
         {(!viroAvailable || viroError) && (
           <View style={styles.chevronOverlay}>
@@ -1811,20 +1859,10 @@ const ARNavigationScreen = ({ route, navigation }) => {
           </View>
         )}
 
-        {/* Distance Badge at bottom center - ONLY in fallback mode */}
+        {/* Distance Badge at top right - ONLY in fallback mode */}
         {(!viroAvailable || viroError) && (
-          <View style={styles.bottomInfoContainer}>
-            <View style={styles.distanceBadgeLarge}>
-              <Text style={styles.distanceValueLarge}>{currentDistance || '--'}m</Text>
-            </View>
-            
-            {/* ETA Badge */}
-            {eta && (
-              <View style={styles.etaBadgeSmall}>
-                <MaterialCommunityIcons name="walk" size={16} color="#FFFFFF" />
-                <Text style={styles.etaTextSmall}>{eta}</Text>
-              </View>
-            )}
+          <View style={styles.distancePillTopRight}>
+            <Text style={styles.distancePillText}>{currentDistance || '--'}m</Text>
           </View>
         )}
 
@@ -1851,16 +1889,10 @@ const ARNavigationScreen = ({ route, navigation }) => {
           </View>
         )}
         
-        {/* ===== MINIMAL HUD FOR VIROREACT MODE ===== */}
-        {/* Distance + ETA (compact, bottom) - ViroReact mode only */}
+        {/* Distance pill (compact, top-right) - ViroReact mode only */}
         {viroAvailable && !viroError && (
-          <View style={styles.viroliveHUD}>
-            <View style={styles.viroliveDistanceBadge}>
-              <Text style={styles.viroliveDistanceText}>{currentDistance || '--'}m</Text>
-              {eta && (
-                <Text style={styles.viroliveEtaText}> · {eta}</Text>
-              )}
-            </View>
+          <View style={styles.distancePillTopRight}>
+            <Text style={styles.distancePillText}>{currentDistance || '--'}m</Text>
           </View>
         )}
       </View>
@@ -1916,52 +1948,28 @@ const ARNavigationScreen = ({ route, navigation }) => {
         </Animated.View>
       )}
 
-      {/* Top Right: Stop Button */}
+      {/* Top Right: Stop Button — circle */}
       <TouchableOpacity style={styles.stopButton} onPress={() => navigation.goBack()}>
         <MaterialCommunityIcons name="close" size={22} color="#FFFFFF" />
-        <Text style={styles.stopButtonText}>Stop</Text>
       </TouchableOpacity>
 
-      {/* Recalculate Button */}
+      {/* Recalculate Button — circle with reload icon, animated spin */}
       <TouchableOpacity 
         style={[styles.recalculateButton, isRerouting && styles.recalculateButtonDisabled]} 
         onPress={handleManualRecalculate}
         disabled={isRerouting}
       >
-        <MaterialCommunityIcons 
-          name="refresh" 
-          size={20} 
-          color="#FFFFFF" 
-          style={isRerouting ? { transform: [{ rotate: '45deg' }] } : {}}
-        />
-        <Text style={styles.recalculateButtonText}>
-          {isRerouting ? 'Rerouting...' : 'Recalculate'}
-        </Text>
+        <Animated.View style={isRerouting ? { transform: [{ rotate: recalcSpinValue ? recalcSpinValue.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) : '0deg' }] } : {}}>
+          <MaterialCommunityIcons name="reload" size={22} color="#FFFFFF" />
+        </Animated.View>
       </TouchableOpacity>
 
-      {/* Rerouting Indicator */}
-      {isRerouting && (
-        <View style={styles.reroutingBanner}>
-          <MaterialCommunityIcons name="map-marker-path" size={20} color="#FFD700" />
-          <Text style={styles.reroutingText}>Rerouting...</Text>
-        </View>
-      )}
-
-      {/* Pull-up Map */}
-      <Animated.View 
-        style={[styles.mapContainer, { height: mapHeight }]} 
-        {...panResponder.panHandlers}
-      >
-        <View style={styles.mapHandle}>
-          <View style={styles.mapHandleBar} />
-          <Text style={styles.mapHandleText}>
-            {isMapExpanded ? 'Drag down to minimize' : 'Drag up for map'}
-          </Text>
-        </View>
+      {/* Fixed Map — animated height based on pitch */}
+      <Animated.View style={[styles.mapContainer, { height: mapHeight }]}>
         {userLocation ? (
           <MapboxGL.MapView 
             style={styles.map} 
-            styleURL="mapbox://styles/mapbox/streets-v12"
+            styleURL={mapStyle}
             logoEnabled={false} 
             compassEnabled={false}
             attributionEnabled={false}
@@ -1977,7 +1985,22 @@ const ARNavigationScreen = ({ route, navigation }) => {
               animationDuration={600} 
               animationMode="flyTo"
             />
-            {/* User connector line (dotted) - from user to first path node - RENDER FIRST (bottom layer) */}
+            {/* Full original path (gray, faded) - shows walked trail RENDER FIRST (bottom layer) */}
+            {fullPathGeoJSON && (
+              <MapboxGL.ShapeSource id="fullPath" shape={fullPathGeoJSON}>
+                <MapboxGL.LineLayer 
+                  id="fullPathLayer" 
+                  style={{ 
+                    lineColor: '#888888', 
+                    lineWidth: 4, 
+                    lineCap: 'round', 
+                    lineJoin: 'round',
+                    lineOpacity: 0.4,
+                  }} 
+                />
+              </MapboxGL.ShapeSource>
+            )}
+            {/* User connector line (dotted) - from user to first path node - RENDER SECOND */}
             {userConnectorLine && (
               <MapboxGL.ShapeSource id="userConnector" shape={userConnectorLine}>
                 <MapboxGL.LineLayer 
@@ -1993,7 +2016,7 @@ const ARNavigationScreen = ({ route, navigation }) => {
                 />
               </MapboxGL.ShapeSource>
             )}
-            {/* Navigation path (solid) - actual path nodes - RENDER SECOND */}
+            {/* Navigation path (solid, cyan) - remaining path ahead - RENDER THIRD */}
             {navigationPath && (
               <MapboxGL.ShapeSource id="navPath" shape={navigationPath}>
                 <MapboxGL.LineLayer 
@@ -2007,16 +2030,12 @@ const ARNavigationScreen = ({ route, navigation }) => {
                 />
               </MapboxGL.ShapeSource>
             )}
-            {/* User location marker (simple blue dot) - RENDER AFTER PATHS (on top) */}
-            <MapboxGL.PointAnnotation 
-              id="userLocation" 
-              coordinate={getSnappedLocation() || userLocation}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <View style={styles.userDotOuter}>
-                <View style={styles.userDotInner} />
-              </View>
-            </MapboxGL.PointAnnotation>
+            {/* User location marker (3D puck) - RENDER AFTER PATHS (on top) */}
+            <MapboxGL.LocationPuck 
+              puckBearingEnabled={true}
+              puckBearing="heading"
+              pulsing={{ isEnabled: true }}
+            />
             {/* Destination marker - RENDER LAST (topmost layer) */}
             <MapboxGL.PointAnnotation id="destination" coordinate={[building.longitude, building.latitude]}>
               <View style={styles.mapDestinationMarker}>
@@ -2208,7 +2227,7 @@ const styles = StyleSheet.create({
   // Street/Building Label (Like Google Maps Live View)
   streetLabel: {
     position: 'absolute',
-    top: SCREEN_HEIGHT * 0.35,
+    top: SCREEN_HEIGHT * 0.40,
     left: 20,
     right: 20,
     alignItems: 'center',
@@ -2343,45 +2362,43 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   
-  // Stop Button
+  // Stop Button — circle
   stopButton: {
     position: 'absolute',
-    top: 50,
+    bottom: SCREEN_HEIGHT * 0.40 + 16,
     right: 16,
-    flexDirection: 'row',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(220, 53, 69, 0.9)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  stopButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginLeft: 6,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   
-  // Recalculate Button
+  // Recalculate Button — circle, same size as stop
   recalculateButton: {
     position: 'absolute',
-    top: 100,
-    right: 16,
-    flexDirection: 'row',
+    bottom: SCREEN_HEIGHT * 0.40 + 16,
+    right: 76,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(0, 122, 255, 0.9)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   recalculateButtonDisabled: {
     backgroundColor: 'rgba(100, 100, 100, 0.7)',
-  },
-  recalculateButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 6,
   },
   
   // Rerouting Banner
@@ -2481,12 +2498,13 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   
-  // Map Container
+  // Map Container — fixed 40% height
   mapContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+    height: MAP_FIXED_HEIGHT,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -2496,24 +2514,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-  },
-  mapHandle: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    backgroundColor: '#F8F9FA',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-  },
-  mapHandleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#CED4DA',
-    borderRadius: 2,
-  },
-  mapHandleText: {
-    color: '#6C757D',
-    fontSize: 11,
-    marginTop: 4,
   },
   map: {
     flex: 1,
@@ -2539,6 +2539,123 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40, 
     paddingVertical: 18 
   },
+  guideContainer: {
+    flex: 1,
+  },
+  guideSafeArea: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  guideHeader: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 18,
+  },
+  guideHeaderIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  guideTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter_700Bold',
+    marginBottom: 4,
+  },
+  guideSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  guideContent: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 10,
+  },
+  guideCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  guideCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  guideCardTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+  },
+  guideCardText: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: 'Inter_400Regular',
+  },
+  guideBulletList: {
+    gap: 8,
+  },
+  guideBulletItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  guideBulletText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    fontFamily: 'Inter_400Regular',
+  },
+  guideInfoRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  guideInfoText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Inter_400Regular',
+  },
+  guideCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  guideCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  guideCheckboxLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
+  guidePrimaryButton: {
+    minHeight: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    elevation: 3,
+  },
+  guidePrimaryButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+  },
   guideButtonGradient: {
     paddingHorizontal: 40,
     paddingVertical: 16,
@@ -2548,32 +2665,22 @@ const styles = StyleSheet.create({
     elevation: 5 
   },
   
-  // ===== VIROREACT MINIMAL HUD STYLES =====
-  // Google Live View style - minimal overlay, let AR do the work
-  viroliveHUD: {
+  // Distance pill — top-right
+  distancePillTopRight: {
     position: 'absolute',
-    bottom: 240,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  viroliveDistanceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  viroliveDistanceText: {
+  distancePillText: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
-  },
-  viroliveEtaText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 16,
-    fontWeight: '500',
   },
   
   // ===== ERROR BANNER STYLES =====
@@ -2607,6 +2714,30 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  
+  // ===== REROUTE TOAST STYLES =====
+  rerouteToast: {
+    position: 'absolute',
+    top: 90,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.5)',
+    zIndex: 50,
+  },
+  rerouteToastText: {
+    flex: 1,
+    color: '#FFD700',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 10,
   },
 });
 

@@ -115,7 +115,7 @@ export const Icon = ({
 export const IconCircle = ({
   name,
   size = 24,
-  color = '#800000',
+  color = '#B22222',
   bgColor = '#FEE2E2',
   circleSize,
   style,

@@ -2,6 +2,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, TouchableOpacity, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useThemeColors } from '../../context/SettingsContext';
 
 export const AnimatedCard = ({ 
   children, 
@@ -11,6 +12,7 @@ export const AnimatedCard = ({
   animateOnMount = true,
   hapticFeedback = true,
 }) => {
+  const colors = useThemeColors();
   const translateY = useRef(new Animated.Value(animateOnMount ? 20 : 0)).current;
   const opacity = useRef(new Animated.Value(animateOnMount ? 0 : 1)).current;
   const scale = useRef(new Animated.Value(1)).current;
@@ -72,7 +74,7 @@ export const AnimatedCard = ({
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           activeOpacity={0.95}
-          style={[styles.card, style]}
+          style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style]}
         >
           {children}
         </TouchableOpacity>
@@ -81,7 +83,7 @@ export const AnimatedCard = ({
   }
 
   return (
-    <Animated.View style={[styles.card, style, animatedStyle]}>
+    <Animated.View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }, style, animatedStyle]}>
       {children}
     </Animated.View>
   );

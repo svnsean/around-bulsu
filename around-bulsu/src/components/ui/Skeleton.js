@@ -2,9 +2,11 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useThemeColors } from '../../context/SettingsContext';
 
 export const Skeleton = ({ width, height, borderRadius = 8, style }) => {
   const shimmerTranslate = useRef(new Animated.Value(-1)).current;
+  const colors = useThemeColors();
 
   useEffect(() => {
     const shimmerAnimation = Animated.loop(
@@ -26,7 +28,7 @@ export const Skeleton = ({ width, height, borderRadius = 8, style }) => {
   return (
     <View
       style={[
-        styles.skeleton,
+        { backgroundColor: colors.surface, overflow: 'hidden' },
         { width, height, borderRadius },
         style,
       ]}
@@ -49,10 +51,12 @@ export const Skeleton = ({ width, height, borderRadius = 8, style }) => {
 };
 
 // Building list skeleton
-export const BuildingListSkeleton = ({ count = 3 }) => (
+export const BuildingListSkeleton = ({ count = 3 }) => {
+  const colors = useThemeColors();
+  return (
   <View style={styles.listContainer}>
     {Array.from({ length: count }).map((_, index) => (
-      <View key={index} style={styles.buildingItem}>
+      <View key={index} style={[styles.buildingItem, { backgroundColor: colors.card }]}>
         <Skeleton width={44} height={44} borderRadius={12} />
         <View style={styles.buildingContent}>
           <Skeleton width="70%" height={16} style={{ marginBottom: 8 }} />
@@ -62,13 +66,16 @@ export const BuildingListSkeleton = ({ count = 3 }) => (
       </View>
     ))}
   </View>
-);
+  );
+};
 
 // Contact list skeleton
-export const ContactListSkeleton = ({ count = 4 }) => (
+export const ContactListSkeleton = ({ count = 4 }) => {
+  const colors = useThemeColors();
+  return (
   <View style={styles.listContainer}>
     {Array.from({ length: count }).map((_, index) => (
-      <View key={index} style={styles.contactItem}>
+      <View key={index} style={[styles.contactItem, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.contactContent}>
           <Skeleton width="60%" height={16} style={{ marginBottom: 6 }} />
           <Skeleton width="40%" height={14} />
@@ -77,23 +84,23 @@ export const ContactListSkeleton = ({ count = 4 }) => (
       </View>
     ))}
   </View>
-);
+  );
+};
 
 // Card skeleton
-export const CardSkeleton = ({ hasImage = true }) => (
-  <View style={styles.cardContainer}>
+export const CardSkeleton = ({ hasImage = true }) => {
+  const colors = useThemeColors();
+  return (
+  <View style={[styles.cardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
     {hasImage && <Skeleton width="100%" height={150} borderRadius={16} style={{ marginBottom: 12 }} />}
     <Skeleton width="80%" height={20} style={{ marginBottom: 8 }} />
     <Skeleton width="60%" height={14} style={{ marginBottom: 6 }} />
     <Skeleton width="90%" height={14} />
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
-  skeleton: {
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
   listContainer: {
     padding: 16,
   },
@@ -101,7 +108,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#F9FAFB',
     borderRadius: 16,
     marginBottom: 12,
   },
@@ -114,21 +120,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
   },
   contactContent: {
     flex: 1,
   },
   cardContainer: {
     padding: 16,
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
   },
 });

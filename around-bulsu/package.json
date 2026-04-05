@@ -11,12 +11,11 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
-    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "^11.4.1",
     "@react-native-firebase/app": "^23.8.6",
-    "@react-native-firebase/messaging": "^23.8.6",
     "@react-navigation/bottom-tabs": "^7.9.0",
     "@react-navigation/drawer": "^7.7.10",
     "@react-navigation/elements": "^2.6.3",
@@ -40,6 +39,7 @@
     "expo-linear-gradient": "^15.0.8",
     "expo-linking": "~8.0.10",
     "expo-location": "~19.0.8",
+    "expo-notifications": "^55.0.12",
     "expo-router": "~6.0.20",
     "expo-sensors": "~15.0.8",
     "expo-splash-screen": "~31.0.12",
